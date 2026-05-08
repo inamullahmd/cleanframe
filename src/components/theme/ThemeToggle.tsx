@@ -1,5 +1,6 @@
 "use client";
 
+import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 
 type Theme = "light" | "dark";
@@ -34,7 +35,6 @@ export function ThemeToggle() {
 
   function toggleTheme() {
     const nextTheme = theme === "dark" ? "light" : "dark";
-
     setTheme(nextTheme);
     applyTheme(nextTheme);
   }
@@ -43,14 +43,11 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={toggleTheme}
-      className="group relative inline-flex items-center gap-2 overflow-hidden rounded-full border border-[color:var(--border)] bg-[var(--surface)] px-3 py-2 text-sm font-bold text-[var(--text)] shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-[color:var(--accent)] hover:shadow-md"
-      aria-label="Toggle color theme"
+      aria-label="Toggle theme"
+      title="Toggle theme"
+      className="grid size-8 place-items-center rounded-md border border-border bg-muted text-muted-foreground transition hover:text-foreground"
     >
-      <span className="absolute inset-0 bg-gradient-to-r from-teal-400/10 to-indigo-400/10 opacity-0 transition group-hover:opacity-100" />
-      <span className="relative">{theme === "dark" ? "🌙" : "☀️"}</span>
-      <span className="relative hidden sm:inline">
-        {theme === "dark" ? "Dark" : "Light"}
-      </span>
+      {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
     </button>
   );
 }

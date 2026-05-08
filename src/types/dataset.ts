@@ -1,12 +1,24 @@
 export type DatasetRow = Record<string, string>;
 
 export type ColumnType =
+  | "integer"
+  | "decimal"
   | "number"
+  | "percentage"
+  | "currency"
   | "date"
+  | "datetime"
+  | "time"
+  | "boolean"
   | "category"
   | "text"
-  | "boolean"
   | "id"
+  | "uuid"
   | "email"
+  | "phone"
   | "url"
-  | "currency";
+  | "postal_code"
+  | "country_code"
+  | "latitude"
+  | "longitude"
+  | "json";

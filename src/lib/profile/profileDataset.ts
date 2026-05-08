@@ -2,20 +2,63 @@ import type { ColumnType, DatasetRow } from "@/types/dataset";
 import type {
   ColumnProfile,
   DatasetProfile,
+  DateSummary,
   TopValue,
 } from "@/types/profile";
 import { calculateNumericStats } from "@/lib/profile/calculateNumericStats";
 import { calculateQualityScore } from "@/lib/profile/calculateQualityScore";
 import { detectColumnType } from "@/lib/profile/detectColumnType";
 import { detectDuplicateRows } from "@/lib/profile/detectDuplicates";
-import { detectOutliersIqr } from "@/lib/profile/detectOutliers";
+import { detectOutliers } from "@/lib/profile/detectOutliers";
+import type { OutlierConfig } from "@/types/outlier";
+import { DEFAULT_OUTLIER_CONFIG } from "@/types/outlier";
 import { isMissingValue } from "@/lib/profile/detectMissingValues";
 
 type ProfileDatasetOptions = {
   fileName: string;
   fileSizeBytes: number;
   parseErrors?: string[];
+  outlierConfig?: OutlierConfig;
+  columnTypeOverrides?: Partial<Record<string, ColumnType>>;
 };
+
+const NUMERIC_PROFILE_TYPES: ColumnType[] = [
+  "integer",
+  "decimal",
+  "number",
+  "percentage",
+  "currency",
+  "latitude",
+  "longitude",
+];
+
+const DATE_PROFILE_TYPES: ColumnType[] = ["date", "datetime"];
+
+export function createEmptyColumnTypeCounts(): Record<ColumnType, number> {
+  return {
+    integer: 0,
+    decimal: 0,
+    number: 0,
+    percentage: 0,
+    currency: 0,
+    date: 0,
+    datetime: 0,
+    time: 0,
+    boolean: 0,
+    category: 0,
+    text: 0,
+    id: 0,
+    uuid: 0,
+    email: 0,
+    phone: 0,
+    url: 0,
+    postal_code: 0,
+    country_code: 0,
+    latitude: 0,
+    longitude: 0,
+    json: 0,
+  };
+}
 
 function parseNumber(value: unknown): number | null {
   if (isMissingValue(value)) return null;
@@ -23,6 +66,7 @@ function parseNumber(value: unknown): number | null {
   const normalized = String(value)
     .trim()
     .replaceAll(",", "")
+    .replace("%", "")
     .replace(/^[^\d.-]+/, "");
 
   const parsed = Number(normalized);
@@ -45,6 +89,43 @@ function getTopValues(values: unknown[], limit = 5): TopValue[] {
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit)
     .map(([value, count]) => ({ value, count }));
+}
+
+function calculateDateSummary(values: unknown[]): DateSummary | undefined {
+  const parsedDates = values
+    .filter((value) => !isMissingValue(value))
+    .map((value) => {
+      const rawValue = String(value).trim();
+      const timestamp = Date.parse(rawValue);
+
+      if (Number.isNaN(timestamp)) return null;
+
+      return {
+        rawValue,
+        timestamp,
+      };
+    })
+    .filter(
+      (value): value is { rawValue: string; timestamp: number } =>
+        value !== null,
+    )
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  if (parsedDates.length === 0) return undefined;
+
+  return {
+    min: parsedDates[0]?.rawValue ?? "",
+    max: parsedDates[parsedDates.length - 1]?.rawValue ?? "",
+  };
+}
+
+function countRowsWithMissingValues(
+  rows: DatasetRow[],
+  fields: string[],
+): number {
+  return rows.filter((row) =>
+    fields.some((field) => isMissingValue(row[field])),
+  ).length;
 }
 
 function buildRecommendations(
@@ -93,36 +174,30 @@ export function profileDataset(
   fields: string[],
   options: ProfileDatasetOptions,
 ): DatasetProfile {
+
+  const outlierConfig = options.outlierConfig ?? DEFAULT_OUTLIER_CONFIG;
+
   const duplicateRowCount = detectDuplicateRows(rows, fields);
+  const rowsWithMissingValuesCount = countRowsWithMissingValues(rows, fields);
 
   let totalMissingValues = 0;
   let totalOutliers = 0;
   let numericValueCount = 0;
 
-  const columnTypeCounts: Record<ColumnType, number> = {
-    number: 0,
-    date: 0,
-    category: 0,
-    text: 0,
-    boolean: 0,
-    id: 0,
-    email: 0,
-    url: 0,
-    currency: 0,
-  };
+  const columnTypeCounts = createEmptyColumnTypeCounts();
 
   const columns: ColumnProfile[] = fields.map((field) => {
     const values = rows.map((row) => row[field]);
     const missingCount = values.filter(isMissingValue).length;
     const presentValues = values.filter((value) => !isMissingValue(value));
 
-    const type = detectColumnType(field, values);
+    const type = options.columnTypeOverrides?.[field] ?? detectColumnType(field, values);
 
     totalMissingValues += missingCount;
     columnTypeCounts[type] += 1;
 
-    const shouldCalculateNumericStats =
-      type === "number" || type === "currency";
+    const shouldCalculateNumericStats = NUMERIC_PROFILE_TYPES.includes(type);
+    const shouldCalculateDateStats = DATE_PROFILE_TYPES.includes(type);
 
     const numericValues = shouldCalculateNumericStats
       ? values
@@ -135,7 +210,11 @@ export function profileDataset(
       : undefined;
 
     const outliers = shouldCalculateNumericStats
-      ? detectOutliersIqr(numericValues)
+  ? detectOutliers(numericValues, outlierConfig, field)
+  : undefined;
+
+    const dateSummary = shouldCalculateDateStats
+      ? calculateDateSummary(values)
       : undefined;
 
     if (shouldCalculateNumericStats) {
@@ -155,6 +234,7 @@ export function profileDataset(
       ).size,
       topValues: getTopValues(values),
       numericSummary,
+      dateSummary,
       outliers,
     };
   });
@@ -174,6 +254,7 @@ export function profileDataset(
     rowCount: rows.length,
     columnCount: fields.length,
     duplicateRowCount,
+    rowsWithMissingValuesCount,
     qualityScore,
     columns,
     previewRows: rows.slice(0, 25),

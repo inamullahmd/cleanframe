@@ -1,4 +1,5 @@
 import type { ColumnType, DatasetRow } from "@/types/dataset";
+import type { OutlierDetectionMethod } from "@/types/outlier";
 
 export type TopValue = {
   value: string;
@@ -15,10 +16,18 @@ export type NumericSummary = {
   q3: number;
 };
 
+export type DateSummary = {
+  min: string;
+  max: string;
+};
+
 export type OutlierSummary = {
+  method: OutlierDetectionMethod;
   count: number;
-  lowerFence: number;
-  upperFence: number;
+  lowerFence?: number;
+  upperFence?: number;
+  threshold?: number;
+  outlierValues: number[];
 };
 
 export type ColumnProfile = {
@@ -30,6 +39,7 @@ export type ColumnProfile = {
   uniqueCount: number;
   topValues: TopValue[];
   numericSummary?: NumericSummary;
+  dateSummary?: DateSummary;
   outliers?: OutlierSummary;
 };
 
@@ -39,6 +49,7 @@ export type DatasetProfile = {
   rowCount: number;
   columnCount: number;
   duplicateRowCount: number;
+  rowsWithMissingValuesCount: number;
   qualityScore: number;
   columns: ColumnProfile[];
   previewRows: DatasetRow[];

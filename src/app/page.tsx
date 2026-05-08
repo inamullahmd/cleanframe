@@ -1,78 +1,197 @@
+import Image from "next/image";
 import Link from "next/link";
+import {
+  ArrowRight,
+  BarChart3,
+  FileSpreadsheet,
+  ShieldCheck,
+  SlidersHorizontal,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { LoadSampleButton } from "@/components/workbench/sample/LoadSampleButton";
+
+const capabilities = [
+  {
+    title: "Profile",
+    description: "Detect column types, missing values, duplicates, and outliers.",
+    icon: FileSpreadsheet,
+  },
+  {
+    title: "Correct",
+    description: "Rename columns and override inferred schema types.",
+    icon: SlidersHorizontal,
+  },
+  {
+    title: "Visualize",
+    description: "Build charts with compatible column and aggregation controls.",
+    icon: BarChart3,
+  },
+  {
+    title: "Private",
+    description: "Files are processed temporarily without a database in v1.",
+    icon: ShieldCheck,
+  },
+];
 
 export default function HomePage() {
   return (
-    <section className="relative overflow-hidden rounded-[2rem] border border-[color:var(--border)] bg-[var(--surface)] p-8 shadow-2xl shadow-slate-950/5 backdrop-blur-xl md:p-12">
-      <div className="absolute -right-24 -top-24 size-72 rounded-full bg-teal-400/20 blur-3xl" />
-      <div className="absolute -bottom-24 left-1/3 size-72 rounded-full bg-indigo-400/20 blur-3xl" />
+    <main className="min-h-screen bg-background text-foreground">
+      <section className="mx-auto flex min-h-screen w-full max-w-6xl flex-col justify-center px-6 py-12">
+        <div className="grid gap-12 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+          <div>
+            <div className="mb-7 inline-flex items-center gap-3 rounded-2xl border bg-muted/30 px-3 py-2 shadow-sm">
+              <Image
+                src="/logo.png"
+                alt="Cleanframe"
+                width={28}
+                height={28}
+                priority
+                className="size-7 object-contain"
+              />
 
-      <div className="relative grid gap-10 md:grid-cols-[1.15fr_0.85fr] md:items-center">
-        <div>
-          <div className="inline-flex rounded-full border border-[color:var(--border)] bg-[var(--accent-soft)] px-4 py-2 text-sm font-extrabold text-[var(--accent-strong)]">
-            CSV Data Quality Workbench
+              <span className="font-brand text-sm font-semibold tracking-[-0.02em] text-foreground">
+                Cleanframe
+              </span>
+
+              <span className="rounded-xl border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                CSV Workbench
+              </span>
+            </div>
+
+            <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-foreground md:text-6xl">
+              Turn messy CSV files into trusted, chart-ready datasets.
+            </h1>
+
+            <p className="mt-6 max-w-2xl text-base leading-8 text-muted-foreground md:text-lg">
+              Upload a CSV, inspect schema quality, correct inferred column
+              types, explore the full table, detect outliers, and build
+              exportable charts from one focused workspace.
+            </p>
+
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Button asChild size="lg">
+                <Link href="/workbench">
+                  Open Workbench
+                  <ArrowRight className="ml-2 size-4" />
+                </Link>
+              </Button>
+
+              <LoadSampleButton variant="outline" size="lg" />
+            </div>
+
+            <p className="mt-4 text-xs leading-6 text-muted-foreground">
+              No account required. No database in v1. Best experienced with the
+              included Airbnb sample dataset.
+            </p>
           </div>
 
-          <h1 className="mt-6 max-w-3xl text-5xl font-black tracking-tight text-[var(--text)] md:text-6xl">
-            Turn messy CSVs into clean, explainable datasets.
-          </h1>
+          <div className="rounded-3xl border bg-muted/20 p-4 shadow-sm">
+            <div className="rounded-2xl border bg-background p-4">
+              <div className="mb-4 flex items-center justify-between border-b pb-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    Dataset profile
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    AB_NYC_2019.csv
+                  </p>
+                </div>
 
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-[var(--muted)]">
-            Cleanframe profiles uploaded datasets, detects quality issues,
-            infers column types, finds missing values and duplicates, and helps
-            prepare data for analysis.
-          </p>
-
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link
-              href="/upload"
-              className="rounded-2xl bg-[var(--text)] px-6 py-3 font-extrabold text-[var(--surface-strong)] shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 hover:shadow-xl"
-            >
-              Upload CSV
-            </Link>
-
-            <Link
-              href="/about"
-              className="rounded-2xl border border-[color:var(--border)] bg-[var(--surface)] px-6 py-3 font-extrabold text-[var(--text)] shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-[color:var(--accent)]"
-            >
-              View Scope
-            </Link>
-          </div>
-        </div>
-
-        <div className="rounded-[2rem] border border-[color:var(--border)] bg-[var(--surface-strong)]/70 p-6 shadow-xl shadow-slate-950/5 backdrop-blur">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-black text-[var(--text)]">
-              Milestone 1
-            </h2>
-
-            <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-xs font-black text-[var(--accent-strong)]">
-              Live
-            </span>
-          </div>
-
-          <div className="mt-6 grid gap-3">
-            {[
-              "Upload CSV file",
-              "Validate file type and size",
-              "Parse rows and headers",
-              "Detect column types",
-              "Find missing values",
-              "Detect duplicate rows",
-              "Show charts and preview data",
-            ].map((item) => (
-              <div
-                key={item}
-                className="flex items-center gap-3 rounded-2xl border border-[color:var(--border)] bg-[var(--surface)] px-4 py-3 text-sm font-bold text-[var(--text)]"
-              >
-                <span className="grid size-6 place-items-center rounded-full bg-[var(--accent-soft)] text-[var(--accent-strong)]">
-                  ✓
+                <span className="rounded-xl border bg-muted/40 px-2 py-1 text-xs font-medium text-foreground">
+                  96/100
                 </span>
-                {item}
               </div>
-            ))}
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {capabilities.map((item) => {
+                  const Icon = item.icon;
+
+                  return (
+                    <div
+                      key={item.title}
+                      className="rounded-2xl border bg-muted/25 p-4"
+                    >
+                      <div className="mb-3 flex size-9 items-center justify-center rounded-xl border bg-background">
+                        <Icon className="size-4 text-foreground" />
+                      </div>
+
+                      <h2 className="text-sm font-semibold text-foreground">
+                        {item.title}
+                      </h2>
+
+                      <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                        {item.description}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 rounded-2xl border bg-muted/20 p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Preview
+                  </p>
+
+                  <p className="text-xs text-muted-foreground">
+                    5,000 rows · 16 columns
+                  </p>
+                </div>
+
+                <div className="overflow-hidden rounded-xl border">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-muted text-muted-foreground">
+                      <tr>
+                        <th className="border-r px-3 py-2 font-medium">
+                          room_type
+                        </th>
+                        <th className="border-r px-3 py-2 font-medium">
+                          price
+                        </th>
+                        <th className="px-3 py-2 font-medium">last_review</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      <tr className="border-t">
+                        <td className="border-r px-3 py-2">Private room</td>
+                        <td className="border-r px-3 py-2">$149</td>
+                        <td className="px-3 py-2">2019-05-21</td>
+                      </tr>
+
+                      <tr className="border-t">
+                        <td className="border-r px-3 py-2">Entire home/apt</td>
+                        <td className="border-r bg-rose-100 px-3 py-2 text-rose-950 dark:bg-rose-950/40 dark:text-rose-100">
+                          $10,000
+                        </td>
+                        <td className="bg-amber-100 px-3 py-2 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100" />
+                      </tr>
+
+                      <tr className="border-t">
+                        <td className="border-r px-3 py-2">Shared room</td>
+                        <td className="border-r px-3 py-2">$75</td>
+                        <td className="px-3 py-2">2019-06-12</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <span className="size-3 rounded-sm border border-amber-300 bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40" />
+                    Missing
+                  </span>
+
+                  <span className="flex items-center gap-1.5">
+                    <span className="size-3 rounded-sm border border-rose-300 bg-rose-100 dark:border-rose-700 dark:bg-rose-950/40" />
+                    Outlier
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </main>
   );
 }

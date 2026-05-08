@@ -1,79 +1,181 @@
 import { NextResponse } from "next/server";
-import { parseCsv } from "@/lib/csv/parseCsv";
-import { profileDataset } from "@/lib/profile/profileDataset";
+import Papa from "papaparse";
+import type { DatasetRow } from "@/types/dataset";
 import type { DatasetWorkspace } from "@/types/workspace";
+import type { CsvEncoding } from "@/types/settings";
+import { DEFAULT_CSV_ENCODING } from "@/types/settings";
+import { profileDataset } from "@/lib/profile/profileDataset";
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
-export const runtime = "nodejs";
+const ALLOWED_ENCODINGS: CsvEncoding[] = [
+  "utf-8",
+  "utf-8-sig",
+  "iso-8859-1",
+  "windows-1252",
+];
+
+type ParsedCsvResult = {
+  fields: string[];
+  rows: DatasetRow[];
+  parseErrors: string[];
+};
+
+function normalizeEncoding(value: FormDataEntryValue | null): CsvEncoding {
+  const encoding = String(value ?? DEFAULT_CSV_ENCODING);
+
+  if (ALLOWED_ENCODINGS.includes(encoding as CsvEncoding)) {
+    return encoding as CsvEncoding;
+  }
+
+  return DEFAULT_CSV_ENCODING;
+}
+
+function validateFile(file: File): string | null {
+  if (!file.name.toLowerCase().endsWith(".csv")) {
+    return "Only .csv files are supported.";
+  }
+
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    return "File is too large. Maximum size is 10MB.";
+  }
+
+  return null;
+}
+
+async function decodeCsvText(
+  file: File,
+  encoding: CsvEncoding,
+): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const decoderEncoding = encoding === "utf-8-sig" ? "utf-8" : encoding;
+
+  let csvText = new TextDecoder(decoderEncoding).decode(buffer);
+
+  if (encoding === "utf-8-sig") {
+    csvText = csvText.replace(/^\uFEFF/, "");
+  }
+
+  return csvText;
+}
+
+function normalizeCellValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+
+  return String(value);
+}
+
+function parseCsv(csvText: string): ParsedCsvResult {
+  const result = Papa.parse<Record<string, unknown>>(csvText, {
+    header: true,
+    skipEmptyLines: true,
+    dynamicTyping: false,
+    transformHeader: (header) => header.trim(),
+  });
+
+  const fields = (result.meta.fields ?? [])
+    .map((field) => field.trim())
+    .filter(Boolean);
+
+  const rows: DatasetRow[] = result.data
+    .filter((row) => {
+      return fields.some((field) => {
+        const value = row[field];
+
+        return value !== null && value !== undefined && String(value) !== "";
+      });
+    })
+    .map((row) => {
+      const normalizedRow: DatasetRow = {};
+
+      for (const field of fields) {
+        normalizedRow[field] = normalizeCellValue(row[field]);
+      }
+
+      return normalizedRow;
+    });
+
+  const parseErrors = result.errors.map((error) => {
+    const rowLabel =
+      typeof error.row === "number" ? `Row ${error.row + 1}: ` : "";
+
+    return `${rowLabel}${error.message}`;
+  });
+
+  return {
+    fields,
+    rows,
+    parseErrors,
+  };
+}
 
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
-    const uploadedFile = formData.get("file");
 
-    if (!(uploadedFile instanceof File)) {
+    const file = formData.get("file");
+    const encoding = normalizeEncoding(formData.get("encoding"));
+
+    if (!(file instanceof File)) {
       return NextResponse.json(
-        { error: "No CSV file was uploaded." },
+        { error: "CSV file is required." },
         { status: 400 },
       );
     }
 
-    if (!uploadedFile.name.toLowerCase().endsWith(".csv")) {
+    const validationError = validateFile(file);
+
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 });
+    }
+
+    const csvText = await decodeCsvText(file, encoding);
+    const { fields, rows, parseErrors } = parseCsv(csvText);
+
+    if (fields.length === 0) {
       return NextResponse.json(
-        { error: "Invalid file type. Please upload a .csv file." },
+        { error: "CSV must contain a header row." },
         { status: 400 },
       );
     }
 
-    if (uploadedFile.size > MAX_FILE_SIZE_BYTES) {
+    if (rows.length === 0) {
       return NextResponse.json(
-        { error: "File is too large. Maximum size is 10MB." },
+        { error: "CSV does not contain any data rows." },
         { status: 400 },
       );
     }
 
-    const csvText = await uploadedFile.text();
-
-    if (!csvText.trim()) {
-      return NextResponse.json(
-        { error: "The uploaded CSV file is empty." },
-        { status: 400 },
-      );
-    }
-
-    const parsedCsv = parseCsv(csvText);
-
-    if (parsedCsv.fields.length === 0 || parsedCsv.rows.length === 0) {
-      return NextResponse.json(
-        { error: "No usable rows or columns were found in the CSV file." },
-        { status: 400 },
-      );
-    }
-
-    const profile = profileDataset(parsedCsv.rows, parsedCsv.fields, {
-      fileName: uploadedFile.name,
-      fileSizeBytes: uploadedFile.size,
-      parseErrors: parsedCsv.errors,
+    const profile = profileDataset(rows, fields, {
+      fileName: file.name,
+      fileSizeBytes: file.size,
+      parseErrors,
     });
 
     const workspace: DatasetWorkspace = {
       file: {
-        name: uploadedFile.name,
-        sizeBytes: uploadedFile.size,
+        name: file.name,
+        sizeBytes: file.size,
         uploadedAt: new Date().toISOString(),
       },
-      fields: parsedCsv.fields,
-      rawRows: parsedCsv.rows,
+      fields,
+      rawRows: rows,
+      workingRows: rows,
+      cleaningSteps: [],
       profile,
     };
 
-    return NextResponse.json({ workspace });
+    return NextResponse.json({
+      workspace,
+    });
   } catch (error) {
-    console.error(error);
-
     return NextResponse.json(
-      { error: "Something went wrong while profiling the CSV." },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to profile CSV file.",
+      },
       { status: 500 },
     );
   }

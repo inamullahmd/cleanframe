@@ -105,6 +105,7 @@ export async function createSampleWorkspace(
     rawRows: rows,
     workingRows: rows,
     cleaningSteps: [],
+    history: [],
     profile,
   };
 }

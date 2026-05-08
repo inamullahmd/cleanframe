@@ -162,6 +162,7 @@ export async function POST(request: Request) {
       rawRows: rows,
       workingRows: rows,
       cleaningSteps: [],
+      history: [],
       profile,
     };
 

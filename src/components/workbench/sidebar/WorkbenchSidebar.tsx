@@ -5,6 +5,7 @@ import {
   BarChart3,
   BrushCleaning,
   FileSpreadsheet,
+  GitBranch,
   Layers3,
   Upload,
 } from "lucide-react";
@@ -63,11 +64,18 @@ const steps: SidebarStep[] = [
     number: "04",
   },
   {
+    id: "history",
+    label: "History",
+    description: "Review and revert changes",
+    icon: GitBranch,
+    number: "05",
+  },
+  {
     id: "charts",
     label: "Charts",
     description: "Build and export visuals",
     icon: BarChart3,
-    number: "05",
+    number: "06",
   },
 ];
 

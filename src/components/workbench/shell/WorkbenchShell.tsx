@@ -8,6 +8,7 @@ import { ChartBuilder } from "@/components/workbench/analytics/ChartBuilder";
 import { CleanPanel } from "@/components/workbench/clean/CleanPanel";
 import { DataGrid } from "@/components/workbench/table/DataGrid";
 import { EmptyWorkspace } from "@/components/workbench/profiling/EmptyWorkspace";
+import { HistoryPanel } from "@/components/workbench/history/HistoryPanel";
 import { MetricsBar } from "@/components/workbench/profiling/MetricsBar";
 import { SchemaEditor } from "@/components/workbench/schema/SchemaEditor";
 import { WorkbenchHeader } from "@/components/workbench/header/WorkbenchHeader";
@@ -18,6 +19,7 @@ function getPanelLabel(panel: string) {
   if (panel === "schema") return "Schema";
   if (panel === "data") return "Data";
   if (panel === "clean") return "Clean";
+  if (panel === "history") return "History";
   if (panel === "charts") return "Charts";
 
   return "Workspace";
@@ -96,6 +98,8 @@ export function WorkbenchShell() {
               {workspace && activePanel === "data" && <DataGrid />}
 
               {workspace && activePanel === "clean" && <CleanPanel />}
+
+              {workspace && activePanel === "history" && <HistoryPanel />}
 
               {workspace && activePanel === "charts" && <ChartBuilder />}
             </section>

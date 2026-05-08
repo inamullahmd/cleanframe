@@ -5,6 +5,11 @@ import type {
   CleaningStep,
   MissingValueStrategy,
 } from "@/types/cleaning";
+import type {
+  WorkspaceHistoryAction,
+  WorkspaceHistoryEntry,
+  WorkspaceHistorySnapshot,
+} from "@/types/history";
 import type { OutlierConfig } from "@/types/outlier";
 import { DEFAULT_OUTLIER_CONFIG } from "@/types/outlier";
 import type { CsvEncoding } from "@/types/settings";
@@ -12,7 +17,12 @@ import { DEFAULT_CSV_ENCODING } from "@/types/settings";
 import { profileDataset } from "@/lib/profile/profileDataset";
 import { isMissingValue } from "@/lib/profile/detectMissingValues";
 
-export type WorkspacePanel = "schema" | "data" | "clean" | "charts";
+export type WorkspacePanel =
+  | "schema"
+  | "data"
+  | "clean"
+  | "history"
+  | "charts";
 
 export type ColumnNameTransform =
   | "title_case_spaces"
@@ -29,6 +39,12 @@ type ApplyMissingValueFixOptions = {
   columnName: string;
   strategy: MissingValueStrategy;
   customValue?: string;
+};
+
+type AddColumnOptions = {
+  columnName: string;
+  columnType: ColumnType;
+  defaultValue?: string;
 };
 
 type WorkspaceState = {
@@ -52,10 +68,13 @@ type WorkspaceState = {
 
   renameColumn: (oldName: string, newName: string) => void;
   transformColumnNames: (transform: ColumnNameTransform) => void;
+  addColumn: (options: AddColumnOptions) => void;
   updateColumnType: (columnName: string, nextType: ColumnType) => void;
 
   applyMissingValueFix: (options: ApplyMissingValueFixOptions) => void;
   resetCleaning: () => void;
+
+  revertToHistoryPoint: (historyId: string) => void;
 };
 
 const SESSION_STORAGE_KEY = "cleanframe-workspace";
@@ -82,11 +101,22 @@ function getApproxByteSize(value: string): number {
   return new TextEncoder().encode(value).length;
 }
 
-function normalizeWorkspace(workspace: DatasetWorkspace): DatasetWorkspace {
+function createId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeWorkspaceStructure(
+  workspace: DatasetWorkspace,
+): DatasetWorkspace {
   return {
     ...workspace,
     workingRows: workspace.workingRows ?? workspace.rawRows,
     cleaningSteps: workspace.cleaningSteps ?? [],
+    history: workspace.history ?? [],
   };
 }
 
@@ -108,6 +138,109 @@ function persistWorkspace(workspace: DatasetWorkspace): boolean {
     sessionStorage.removeItem(SESSION_STORAGE_KEY);
     return false;
   }
+}
+
+function createWorkspaceSnapshot({
+  workspace,
+  outlierConfig,
+  csvEncoding,
+}: {
+  workspace: DatasetWorkspace;
+  outlierConfig: OutlierConfig;
+  csvEncoding: CsvEncoding;
+}): WorkspaceHistorySnapshot {
+  return {
+    fields: workspace.fields,
+    rawRows: workspace.rawRows,
+    workingRows: workspace.workingRows,
+    cleaningSteps: workspace.cleaningSteps,
+    profile: workspace.profile,
+    outlierConfig,
+    csvEncoding,
+  };
+}
+
+function createHistoryEntry({
+  workspace,
+  outlierConfig,
+  csvEncoding,
+  action,
+  label,
+  description,
+}: {
+  workspace: DatasetWorkspace;
+  outlierConfig: OutlierConfig;
+  csvEncoding: CsvEncoding;
+  action: WorkspaceHistoryAction;
+  label: string;
+  description: string;
+}): WorkspaceHistoryEntry {
+  return {
+    id: createId(),
+    action,
+    label,
+    description,
+    createdAt: new Date().toISOString(),
+    rowCount: workspace.profile.rowCount,
+    columnCount: workspace.profile.columnCount,
+    qualityScore: workspace.profile.qualityScore,
+    snapshot: createWorkspaceSnapshot({
+      workspace,
+      outlierConfig,
+      csvEncoding,
+    }),
+  };
+}
+
+function appendHistory({
+  workspace,
+  outlierConfig,
+  csvEncoding,
+  action,
+  label,
+  description,
+}: {
+  workspace: DatasetWorkspace;
+  outlierConfig: OutlierConfig;
+  csvEncoding: CsvEncoding;
+  action: WorkspaceHistoryAction;
+  label: string;
+  description: string;
+}): DatasetWorkspace {
+  const historyEntry = createHistoryEntry({
+    workspace,
+    outlierConfig,
+    csvEncoding,
+    action,
+    label,
+    description,
+  });
+
+  return {
+    ...workspace,
+    history: [...workspace.history, historyEntry],
+  };
+}
+
+function ensureWorkspaceHasInitialHistory({
+  workspace,
+  outlierConfig,
+  csvEncoding,
+}: {
+  workspace: DatasetWorkspace;
+  outlierConfig: OutlierConfig;
+  csvEncoding: CsvEncoding;
+}): DatasetWorkspace {
+  if (workspace.history.length > 0) return workspace;
+
+  return appendHistory({
+    workspace,
+    outlierConfig,
+    csvEncoding,
+    action: "dataset_loaded",
+    label: "Loaded dataset",
+    description: `Loaded ${workspace.file.name}.`,
+  });
 }
 
 function splitColumnNameIntoWords(name: string): string[] {
@@ -149,7 +282,9 @@ function transformColumnName(
   }
 
   if (transform === "replace_underscores") {
-    return trimmedName.replace(/_/g, " ").replace(/\s+/g, " ").trim() || "Column";
+    return (
+      trimmedName.replace(/_/g, " ").replace(/\s+/g, " ").trim() || "Column"
+    );
   }
 
   const words = splitColumnNameIntoWords(trimmedName);
@@ -180,6 +315,20 @@ function transformColumnName(
   }
 
   return trimmedName || "Column";
+}
+
+function formatColumnNameTransformLabel(transform: ColumnNameTransform): string {
+  const labels: Record<ColumnNameTransform, string> = {
+    title_case_spaces: "Title Case + Spaces",
+    replace_underscores: "Replace Underscores",
+    lowercase_spaces: "Lowercase + Spaces",
+    uppercase: "Uppercase",
+    snake_case: "Snake Case",
+    camel_case: "Camel Case",
+    trim: "Trim Whitespace",
+  };
+
+  return labels[transform];
 }
 
 function makeUniqueColumnNames(names: string[]): string[] {
@@ -261,7 +410,7 @@ function rebuildWorkspaceProfile({
   outlierConfig: OutlierConfig;
   columnTypeOverrides?: Partial<Record<string, ColumnType>>;
 }): DatasetWorkspace {
-  const normalizedWorkspace = normalizeWorkspace(workspace);
+  const normalizedWorkspace = normalizeWorkspaceStructure(workspace);
 
   const profile = profileDataset(
     normalizedWorkspace.workingRows,
@@ -364,16 +513,30 @@ function createCleaningStep({
   affectedRows: number;
 }): CleaningStep {
   return {
-    id:
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    id: createId(),
     type: "missing_values",
     columnName,
     strategy,
     customValue,
     affectedRows,
     createdAt: new Date().toISOString(),
+  };
+}
+
+function restoreWorkspaceFromSnapshot({
+  currentWorkspace,
+  snapshot,
+}: {
+  currentWorkspace: DatasetWorkspace;
+  snapshot: WorkspaceHistorySnapshot;
+}): DatasetWorkspace {
+  return {
+    ...currentWorkspace,
+    fields: snapshot.fields,
+    rawRows: snapshot.rawRows,
+    workingRows: snapshot.workingRows,
+    cleaningSteps: snapshot.cleaningSteps,
+    profile: snapshot.profile,
   };
 }
 
@@ -386,7 +549,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   csvEncoding: DEFAULT_CSV_ENCODING,
 
   setWorkspace: (workspace) => {
-    const normalizedWorkspace = normalizeWorkspace(workspace);
+    const normalizedWorkspace = ensureWorkspaceHasInitialHistory({
+      workspace: normalizeWorkspaceStructure(workspace),
+      outlierConfig: get().outlierConfig,
+      csvEncoding: get().csvEncoding,
+    });
 
     persistWorkspace(normalizedWorkspace);
 
@@ -406,9 +573,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     if (!storedWorkspace) return;
 
     try {
-      const workspace = normalizeWorkspace(
-        JSON.parse(storedWorkspace) as DatasetWorkspace,
-      );
+      const workspace = ensureWorkspaceHasInitialHistory({
+        workspace: normalizeWorkspaceStructure(
+          JSON.parse(storedWorkspace) as DatasetWorkspace,
+        ),
+        outlierConfig: get().outlierConfig,
+        csvEncoding: get().csvEncoding,
+      });
 
       set({
         workspace,
@@ -465,9 +636,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       return;
     }
 
-    const nextWorkspace = rebuildWorkspaceProfile({
+    const rebuiltWorkspace = rebuildWorkspaceProfile({
       workspace: current,
       outlierConfig,
+    });
+
+    const nextWorkspace = appendHistory({
+      workspace: rebuiltWorkspace,
+      outlierConfig,
+      csvEncoding: get().csvEncoding,
+      action: "settings_changed",
+      label: "Updated outlier settings",
+      description: "Changed workspace outlier detection settings.",
     });
 
     persistWorkspace(nextWorkspace);
@@ -494,9 +674,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       return;
     }
 
-    const nextWorkspace = rebuildWorkspaceProfile({
+    const rebuiltWorkspace = rebuildWorkspaceProfile({
       workspace: current,
       outlierConfig: DEFAULT_OUTLIER_CONFIG,
+    });
+
+    const nextWorkspace = appendHistory({
+      workspace: rebuiltWorkspace,
+      outlierConfig: DEFAULT_OUTLIER_CONFIG,
+      csvEncoding: DEFAULT_CSV_ENCODING,
+      action: "settings_changed",
+      label: "Reset settings",
+      description: "Restored default CSV and outlier settings.",
     });
 
     persistWorkspace(nextWorkspace);
@@ -514,7 +703,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     if (!current || !trimmedName || oldName === trimmedName) return;
 
-    const normalizedCurrent = normalizeWorkspace(current);
+    const normalizedCurrent = normalizeWorkspaceStructure(current);
 
     const duplicateExists = normalizedCurrent.fields.some(
       (field) =>
@@ -565,10 +754,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       ),
     };
 
-    const nextWorkspace = rebuildWorkspaceProfile({
+    const rebuiltWorkspace = rebuildWorkspaceProfile({
       workspace: renamedWorkspace,
       outlierConfig: get().outlierConfig,
       columnTypeOverrides: nextOverrides,
+    });
+
+    const nextWorkspace = appendHistory({
+      workspace: rebuiltWorkspace,
+      outlierConfig: get().outlierConfig,
+      csvEncoding: get().csvEncoding,
+      action: "column_renamed",
+      label: "Renamed column",
+      description: `Renamed "${oldName}" to "${trimmedName}".`,
     });
 
     persistWorkspace(nextWorkspace);
@@ -583,7 +781,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     if (!current) return;
 
-    const normalizedCurrent = normalizeWorkspace(current);
+    const normalizedCurrent = normalizeWorkspaceStructure(current);
     const previousFields = normalizedCurrent.fields;
 
     const transformedFields = previousFields.map((field) =>
@@ -638,10 +836,84 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       })),
     };
 
-    const nextWorkspace = rebuildWorkspaceProfile({
+    const rebuiltWorkspace = rebuildWorkspaceProfile({
       workspace: renamedWorkspace,
       outlierConfig: get().outlierConfig,
       columnTypeOverrides: nextOverrides,
+    });
+
+    const nextWorkspace = appendHistory({
+      workspace: rebuiltWorkspace,
+      outlierConfig: get().outlierConfig,
+      csvEncoding: get().csvEncoding,
+      action: "column_names_transformed",
+      label: "Formatted column names",
+      description: `Applied ${formatColumnNameTransformLabel(transform)} to all column names.`,
+    });
+
+    persistWorkspace(nextWorkspace);
+
+    set({
+      workspace: nextWorkspace,
+      activePanel: "schema",
+    });
+  },
+
+  addColumn: ({ columnName, columnType, defaultValue = "" }) => {
+    const current = get().workspace;
+    const trimmedName = columnName.trim();
+
+    if (!current || !trimmedName) return;
+
+    const normalizedCurrent = normalizeWorkspaceStructure(current);
+
+    const duplicateExists = normalizedCurrent.fields.some(
+      (field) => field.toLowerCase() === trimmedName.toLowerCase(),
+    );
+
+    if (duplicateExists) return;
+
+    const nextFields = [...normalizedCurrent.fields, trimmedName];
+
+    const nextRawRows = normalizedCurrent.rawRows.map((row) => ({
+      ...row,
+      [trimmedName]: defaultValue,
+    }));
+
+    const nextWorkingRows = normalizedCurrent.workingRows.map((row) => ({
+      ...row,
+      [trimmedName]: defaultValue,
+    }));
+
+    const nextOverrides: Partial<Record<string, ColumnType>> = {
+      ...createTypeOverrides(normalizedCurrent),
+      [trimmedName]: columnType,
+    };
+
+    const dirtyWorkspace: DatasetWorkspace = {
+      ...normalizedCurrent,
+      fields: nextFields,
+      rawRows: nextRawRows,
+      workingRows: nextWorkingRows,
+      profile: {
+        ...normalizedCurrent.profile,
+        previewRows: nextWorkingRows.slice(0, 25),
+      },
+    };
+
+    const rebuiltWorkspace = rebuildWorkspaceProfile({
+      workspace: dirtyWorkspace,
+      outlierConfig: get().outlierConfig,
+      columnTypeOverrides: nextOverrides,
+    });
+
+    const nextWorkspace = appendHistory({
+      workspace: rebuiltWorkspace,
+      outlierConfig: get().outlierConfig,
+      csvEncoding: get().csvEncoding,
+      action: "column_added",
+      label: "Added column",
+      description: `Added "${trimmedName}" as ${columnType}.`,
     });
 
     persistWorkspace(nextWorkspace);
@@ -657,17 +929,32 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     if (!current) return;
 
-    const normalizedCurrent = normalizeWorkspace(current);
+    const normalizedCurrent = normalizeWorkspaceStructure(current);
+    const previousType =
+      normalizedCurrent.profile.columns.find(
+        (column) => column.name === columnName,
+      )?.type ?? "unknown";
+
+    if (previousType === nextType) return;
 
     const overrides = {
       ...createTypeOverrides(normalizedCurrent),
       [columnName]: nextType,
     };
 
-    const nextWorkspace = rebuildWorkspaceProfile({
+    const rebuiltWorkspace = rebuildWorkspaceProfile({
       workspace: normalizedCurrent,
       outlierConfig: get().outlierConfig,
       columnTypeOverrides: overrides,
+    });
+
+    const nextWorkspace = appendHistory({
+      workspace: rebuiltWorkspace,
+      outlierConfig: get().outlierConfig,
+      csvEncoding: get().csvEncoding,
+      action: "column_type_changed",
+      label: "Changed column type",
+      description: `Changed "${columnName}" from ${previousType} to ${nextType}.`,
     });
 
     persistWorkspace(nextWorkspace);
@@ -684,7 +971,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     if (strategy === "leave") return;
 
-    const normalizedCurrent = normalizeWorkspace(current);
+    const normalizedCurrent = normalizeWorkspaceStructure(current);
     const rows = normalizedCurrent.workingRows;
 
     const affectedRows = rows.filter((row) =>
@@ -732,10 +1019,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       cleaningSteps: [...normalizedCurrent.cleaningSteps, cleaningStep],
     };
 
-    const nextWorkspace = rebuildWorkspaceProfile({
+    const rebuiltWorkspace = rebuildWorkspaceProfile({
       workspace: dirtyWorkspace,
       outlierConfig: get().outlierConfig,
       columnTypeOverrides: typeOverrides,
+    });
+
+    const nextWorkspace = appendHistory({
+      workspace: rebuiltWorkspace,
+      outlierConfig: get().outlierConfig,
+      csvEncoding: get().csvEncoding,
+      action: "missing_values_fixed",
+      label: "Fixed missing values",
+      description: `Applied ${strategy} to "${columnName}" and affected ${affectedRows.toLocaleString()} rows.`,
     });
 
     persistWorkspace(nextWorkspace);
@@ -751,7 +1047,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     if (!current) return;
 
-    const normalizedCurrent = normalizeWorkspace(current);
+    const normalizedCurrent = normalizeWorkspaceStructure(current);
     const typeOverrides = createTypeOverrides(normalizedCurrent);
 
     const dirtyWorkspace: DatasetWorkspace = {
@@ -760,10 +1056,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       cleaningSteps: [],
     };
 
-    const nextWorkspace = rebuildWorkspaceProfile({
+    const rebuiltWorkspace = rebuildWorkspaceProfile({
       workspace: dirtyWorkspace,
       outlierConfig: get().outlierConfig,
       columnTypeOverrides: typeOverrides,
+    });
+
+    const nextWorkspace = appendHistory({
+      workspace: rebuiltWorkspace,
+      outlierConfig: get().outlierConfig,
+      csvEncoding: get().csvEncoding,
+      action: "cleaning_reset",
+      label: "Reset cleaning",
+      description: "Restored the working dataset from the original imported rows.",
     });
 
     persistWorkspace(nextWorkspace);
@@ -771,6 +1076,44 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({
       workspace: nextWorkspace,
       activePanel: "clean",
+    });
+  },
+
+  revertToHistoryPoint: (historyId) => {
+    const current = get().workspace;
+
+    if (!current) return;
+
+    const normalizedCurrent = normalizeWorkspaceStructure(current);
+    const targetEntry = normalizedCurrent.history.find(
+      (entry) => entry.id === historyId,
+    );
+
+    if (!targetEntry) return;
+
+    const restoredWorkspace = restoreWorkspaceFromSnapshot({
+      currentWorkspace: normalizedCurrent,
+      snapshot: targetEntry.snapshot,
+    });
+
+    const nextWorkspace = appendHistory({
+      workspace: restoredWorkspace,
+      outlierConfig: targetEntry.snapshot.outlierConfig,
+      csvEncoding: targetEntry.snapshot.csvEncoding,
+      action: "history_reverted",
+      label: "Reverted workspace",
+      description: `Reverted to "${targetEntry.label}" from ${new Date(
+        targetEntry.createdAt,
+      ).toLocaleString()}.`,
+    });
+
+    persistWorkspace(nextWorkspace);
+
+    set({
+      workspace: nextWorkspace,
+      outlierConfig: targetEntry.snapshot.outlierConfig,
+      csvEncoding: targetEntry.snapshot.csvEncoding,
+      activePanel: "history",
     });
   },
 }));

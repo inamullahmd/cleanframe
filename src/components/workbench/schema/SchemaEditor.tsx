@@ -5,8 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Columns3,
   Database,
+  FilePlus2,
   Sigma,
-  Sparkles,
+  TextCursorInput,
   TriangleAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,15 @@ import {
   CheckSelect,
   type CheckSelectOption,
 } from "@/components/ui/check-select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { InputWithLabel } from "@/components/ui/input-with-label";
 import type { ColumnType } from "@/types/dataset";
 import type { ColumnProfile } from "@/types/profile";
@@ -224,37 +234,211 @@ function TypeSelect({
   );
 }
 
-function ColumnNameTools() {
+function ToolButton({
+  icon: Icon,
+  title,
+}: {
+  icon: ElementType;
+  title: string;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="h-10 rounded-xl px-4"
+    >
+      <Icon className="mr-2 size-4" />
+      {title}
+    </Button>
+  );
+}
+
+function TransformColumnNamesTool() {
   const transformColumnNames = useWorkspaceStore(
     (state) => state.transformColumnNames,
   );
 
+  const [open, setOpen] = useState(false);
   const [transform, setTransform] =
     useState<ColumnNameTransform>("title_case_spaces");
 
-  return (
-    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end">
-      <CheckSelect<ColumnNameTransform>
-        hideLabel
-        label="Column name transform"
-        value={transform}
-        options={COLUMN_NAME_TRANSFORM_OPTIONS}
-        onChange={setTransform}
-        className="min-w-[260px]"
-        triggerClassName="h-9 rounded-xl"
-      />
+  function applyTransform() {
+    transformColumnNames(transform);
+    setOpen(false);
+  }
 
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-9 rounded-xl"
-        onClick={() => transformColumnNames(transform)}
-      >
-        <Sparkles className="mr-2 size-4" />
-        Apply names
-      </Button>
-    </div>
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <ToolButton icon={TextCursorInput} title="Transform column names" />
+      </DialogTrigger>
+
+      <DialogContent className="max-w-xl rounded-3xl px-6 py-6">
+        <DialogHeader>
+          <DialogTitle>Transform column names</DialogTitle>
+          <DialogDescription>
+            Apply a bulk naming format to every column header. A history point
+            will be created before the change is saved.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4 pb-8">
+          <CheckSelect<ColumnNameTransform>
+            label="Format"
+            value={transform}
+            options={COLUMN_NAME_TRANSFORM_OPTIONS}
+            onChange={setTransform}
+          />
+
+          <div className="rounded-2xl border bg-muted/25 p-4 text-xs leading-5 text-muted-foreground">
+            This changes column headers and updates schema, data, chart
+            mappings, cleaning history references, and restore history.
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+
+          <Button type="button" onClick={applyTransform}>
+            Apply format
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AddColumnTool() {
+  const workspace = useWorkspaceStore((state) => state.workspace);
+  const addColumn = useWorkspaceStore((state) => state.addColumn);
+
+  const existingColumns = workspace?.fields ?? [];
+
+  const [open, setOpen] = useState(false);
+  const [columnName, setColumnName] = useState("");
+  const [columnType, setColumnType] = useState<ColumnType>("text");
+  const [defaultValue, setDefaultValue] = useState("");
+  const [error, setError] = useState("");
+
+  function resetForm() {
+    setColumnName("");
+    setColumnType("text");
+    setDefaultValue("");
+    setError("");
+  }
+
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen);
+
+    if (!nextOpen) {
+      resetForm();
+    }
+  }
+
+  function createColumn() {
+    const trimmedName = columnName.trim();
+
+    if (!trimmedName) {
+      setError("Column name is required.");
+      return;
+    }
+
+    const duplicateExists = existingColumns.some(
+      (field) => field.toLowerCase() === trimmedName.toLowerCase(),
+    );
+
+    if (duplicateExists) {
+      setError("A column with this name already exists.");
+      return;
+    }
+
+    addColumn({
+      columnName: trimmedName,
+      columnType,
+      defaultValue,
+    });
+
+    setOpen(false);
+    resetForm();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <ToolButton icon={FilePlus2} title="Add a new column" />
+      </DialogTrigger>
+
+      <DialogContent className="max-w-xl rounded-3xl px-6 py-6">
+        <DialogHeader>
+          <DialogTitle>Add a new column</DialogTitle>
+          <DialogDescription>
+            Add a column to the working dataset and original row structure. A
+            history point will be created.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4 pb-8">
+          <InputWithLabel
+            label="Column name"
+            value={columnName}
+            error={error}
+            placeholder="Example: Cleaning Status"
+            onChange={(event) => {
+              setColumnName(event.target.value);
+              setError("");
+            }}
+          />
+
+          <CheckSelect<ColumnType>
+            label="Column type"
+            value={columnType}
+            options={COLUMN_TYPE_OPTIONS}
+            onChange={setColumnType}
+          />
+
+          <InputWithLabel
+            label="Default value"
+            value={defaultValue}
+            placeholder="Optional"
+            helpText="This value will be added to every existing row. Leave empty for blank cells."
+            onChange={(event) => setDefaultValue(event.target.value)}
+          />
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+
+          <Button type="button" onClick={createColumn}>
+            Add column
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SchemaToolsBar() {
+  return (
+    <section className="rounded-3xl border bg-muted/10 px-5 py-4 shadow-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="shrink-0">
+          <h3 className="text-sm font-semibold text-foreground">Tools</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Schema-level operations
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2 lg:ml-4">
+          <TransformColumnNamesTool />
+          <AddColumnTool />
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -490,23 +674,23 @@ export function SchemaEditor() {
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border bg-background">
       <div className="shrink-0 border-b px-5 py-4">
-        <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border bg-muted/30">
-              <Columns3 className="size-5 text-foreground" />
-            </div>
+        <div className="space-y-4">
+          <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border bg-muted/30">
+                <Columns3 className="size-5 text-foreground" />
+              </div>
 
-            <div>
-              <h2 className="text-sm font-semibold text-foreground">Schema</h2>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                Rename columns, correct inferred types, and review
-                type-specific metrics.
-              </p>
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">
+                  Schema
+                </h2>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Rename columns, correct inferred types, and review
+                  type-specific metrics.
+                </p>
+              </div>
             </div>
-          </div>
-
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-            <ColumnNameTools />
 
             <div className="flex flex-wrap gap-2">
               <SummaryChip
@@ -526,6 +710,8 @@ export function SchemaEditor() {
               />
             </div>
           </div>
+
+          <SchemaToolsBar />
         </div>
       </div>
 

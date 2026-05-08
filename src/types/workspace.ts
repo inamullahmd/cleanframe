@@ -1,6 +1,7 @@
 import type { DatasetRow } from "@/types/dataset";
 import type { DatasetProfile } from "@/types/profile";
 import type { CleaningStep } from "@/types/cleaning";
+import type { WorkspaceHistoryEntry } from "@/types/history";
 
 export type DatasetWorkspace = {
   file: {
@@ -12,5 +13,6 @@ export type DatasetWorkspace = {
   rawRows: DatasetRow[];
   workingRows: DatasetRow[];
   cleaningSteps: CleaningStep[];
+  history: WorkspaceHistoryEntry[];
   profile: DatasetProfile;
 };

@@ -1,33 +1,18 @@
 "use client";
 
 import { useMemo, useRef } from "react";
+import ReactECharts from "echarts-for-react";
+import type { EChartsOption } from "echarts";
 import * as htmlToImage from "html-to-image";
 import { jsPDF } from "jspdf";
 import { Download, Info } from "lucide-react";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Scatter,
-  ScatterChart,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 
 import { Button } from "@/components/ui/button";
 import type { DatasetRow } from "@/types/dataset";
 import type {
   Aggregation,
   ChartConfig,
+  ChartDisplayOptions,
 } from "@/components/workbench/analytics/ChartBuilder";
 
 type Props = {
@@ -100,7 +85,10 @@ function aggregate(values: number[], aggregation: Aggregation) {
   return values.length;
 }
 
-function buildGroupedData(rows: DatasetRow[], config: ChartConfig): ChartDatum[] {
+function buildGroupedData(
+  rows: DatasetRow[],
+  config: ChartConfig,
+): ChartDatum[] {
   const groups = new Map<string, number[]>();
 
   for (const row of rows) {
@@ -214,7 +202,7 @@ function getCompatibilityMessage({
 
   if (["bar", "line", "area", "pie"].includes(config.chartType)) {
     if (!groupableColumns.includes(config.xColumn)) {
-      return "Select a groupable column.";
+      return "Select a valid group column.";
     }
 
     if (
@@ -232,6 +220,370 @@ function formatNumber(value: number) {
   return value.toLocaleString(undefined, {
     maximumFractionDigits: 2,
   });
+}
+
+function getLabelFormatter(displayOptions: ChartDisplayOptions): string {
+  if (displayOptions.labelMode === "name") {
+    return "{b}";
+  }
+
+  if (displayOptions.labelMode === "percent") {
+    return "{d}%";
+  }
+
+  if (displayOptions.labelMode === "name_percent") {
+    return "{b} {d}%";
+  }
+
+  return "{c}";
+}
+
+function getCartesianLabelFormatter(
+  displayOptions: ChartDisplayOptions,
+): string {
+  if (displayOptions.labelMode === "name") return "{b}";
+
+  return "{c}";
+}
+
+function getLegendConfig(
+  displayOptions: ChartDisplayOptions,
+): EChartsOption["legend"] {
+  if (!displayOptions.showLegend) return undefined;
+
+  if (displayOptions.legendPosition === "top") {
+    return {
+      top: 0,
+      left: "center",
+      type: "scroll",
+    };
+  }
+
+  if (displayOptions.legendPosition === "right") {
+    return {
+      top: "middle",
+      right: 0,
+      orient: "vertical",
+      type: "scroll",
+    };
+  }
+
+  return {
+    bottom: 0,
+    left: "center",
+    type: "scroll",
+  };
+}
+
+function getGridConfig(
+  displayOptions: ChartDisplayOptions,
+): EChartsOption["grid"] {
+  const padding = displayOptions.chartPadding;
+
+  return {
+    left: padding + 24,
+    right:
+      displayOptions.showLegend && displayOptions.legendPosition === "right"
+        ? 140
+        : padding,
+    top:
+      displayOptions.showLegend && displayOptions.legendPosition === "top"
+        ? 56
+        : padding,
+    bottom:
+      displayOptions.showLegend && displayOptions.legendPosition === "bottom"
+        ? 76
+        : padding + 28,
+    containLabel: true,
+  };
+}
+
+function getDataZoomConfig(
+  displayOptions: ChartDisplayOptions,
+): EChartsOption["dataZoom"] {
+  if (!displayOptions.showDataZoom) return undefined;
+
+  return [
+    {
+      type: "inside",
+      start: 0,
+      end: 100,
+    },
+    {
+      type: "slider",
+      height: 20,
+      bottom: 12,
+      start: 0,
+      end: 100,
+    },
+  ];
+}
+
+function buildChartOption({
+  config,
+  chartData,
+}: {
+  config: ChartConfig;
+  chartData: ChartDatum[];
+}): EChartsOption {
+  const displayOptions = config.displayOptions;
+  const legend = getLegendConfig(displayOptions);
+  const labelFormatter = getLabelFormatter(displayOptions);
+  const cartesianLabelFormatter = getCartesianLabelFormatter(displayOptions);
+
+  const baseOption: EChartsOption = {
+    color: COLORS,
+    animation: displayOptions.enableAnimation,
+    animationDuration: displayOptions.enableAnimation ? 500 : 0,
+    backgroundColor: "transparent",
+    tooltip: displayOptions.showTooltip
+      ? {
+          trigger: config.chartType === "scatter" ? "item" : "axis",
+          valueFormatter: (value) => formatNumber(Number(value)),
+        }
+      : undefined,
+    legend,
+  };
+
+  if (config.chartType === "pie") {
+    const labelPosition =
+      displayOptions.pieLabelPosition === "outside"
+        ? "outer"
+        : displayOptions.pieLabelPosition;
+
+    return {
+      ...baseOption,
+      tooltip: displayOptions.showTooltip
+        ? {
+            trigger: "item",
+            formatter: "{b}<br />{c} ({d}%)",
+          }
+        : undefined,
+      series: [
+        {
+          name: config.title,
+          type: "pie",
+          radius: [
+            `${displayOptions.pieInnerRadius}%`,
+            `${displayOptions.pieOuterRadius}%`,
+          ],
+          center: ["50%", "52%"],
+          roseType: displayOptions.pieRoseType ? "radius" : undefined,
+          avoidLabelOverlap: true,
+          minAngle: displayOptions.pieMinAngle,
+          labelLayout: {
+            hideOverlap: true,
+            moveOverlap: "shiftY",
+          },
+          emphasis: {
+            scale: true,
+            scaleSize: 8,
+          },
+          label: {
+            show: displayOptions.showLabels,
+            formatter:
+              displayOptions.labelMode === "value" ? "{c}" : labelFormatter,
+            position: labelPosition,
+            overflow: "truncate",
+            width: 120,
+          },
+          labelLine: {
+            show:
+              displayOptions.showLabels &&
+              displayOptions.pieLabelPosition === "outside",
+            length: 14,
+            length2: 10,
+            smooth: true,
+          },
+          data: chartData.map((item) => ({
+            name: item.name,
+            value: item.value,
+          })),
+        },
+      ],
+    };
+  }
+
+  if (config.chartType === "scatter") {
+    return {
+      ...baseOption,
+      grid: getGridConfig(displayOptions),
+      dataZoom: getDataZoomConfig(displayOptions),
+      xAxis: {
+        type: "value",
+        name: config.xColumn,
+        nameLocation: "middle",
+        nameGap: 30,
+        axisLabel: {
+          fontSize: displayOptions.axisFontSize,
+          rotate: displayOptions.axisLabelRotation,
+        },
+        splitLine: {
+          show: displayOptions.showGrid,
+          lineStyle: {
+            type: "dashed",
+            color: "#d8dee8",
+          },
+        },
+      },
+      yAxis: {
+        type: "value",
+        name: config.yColumn,
+        nameGap: 40,
+        axisLabel: {
+          fontSize: displayOptions.axisFontSize,
+        },
+        splitLine: {
+          show: displayOptions.showGrid,
+          lineStyle: {
+            type: "dashed",
+            color: "#d8dee8",
+          },
+        },
+      },
+      series: [
+        {
+          name: config.title,
+          type: "scatter",
+          symbolSize: displayOptions.pointSize,
+          data: chartData.map((item) => [item.x, item.y]),
+          labelLayout: {
+            hideOverlap: true,
+            moveOverlap: "shiftY",
+          },
+          label: {
+            show: displayOptions.showLabels,
+            position: "top",
+            formatter: "{@[1]}",
+            fontSize: displayOptions.axisFontSize,
+          },
+        },
+      ],
+    };
+  }
+
+  const xAxisData = chartData.map((item) => item.name);
+  const yAxisData = chartData.map((item) => item.value);
+
+  const commonCartesianOption: EChartsOption = {
+    ...baseOption,
+    grid: getGridConfig(displayOptions),
+    dataZoom: getDataZoomConfig(displayOptions),
+    xAxis: {
+      type: "category",
+      data: xAxisData,
+      axisLabel: {
+        fontSize: displayOptions.axisFontSize,
+        interval: 0,
+        rotate: displayOptions.axisLabelRotation,
+        hideOverlap: true,
+        overflow: displayOptions.truncateAxisLabels ? "truncate" : "break",
+        width: displayOptions.truncateAxisLabels ? 90 : undefined,
+      },
+    },
+    yAxis: {
+      type: "value",
+      axisLabel: {
+        fontSize: displayOptions.axisFontSize,
+      },
+      splitLine: {
+        show: displayOptions.showGrid,
+        lineStyle: {
+          type: "dashed",
+          color: "#d8dee8",
+        },
+      },
+    },
+  };
+
+  if (config.chartType === "line") {
+    return {
+      ...commonCartesianOption,
+      series: [
+        {
+          name: config.title,
+          type: "line",
+          data: yAxisData,
+          smooth: displayOptions.smoothLines,
+          symbolSize: displayOptions.pointSize,
+          lineStyle: {
+            width: displayOptions.lineWidth,
+          },
+          labelLayout: {
+            hideOverlap: true,
+            moveOverlap: "shiftY",
+          },
+          label: {
+            show: displayOptions.showLabels,
+            position: "top",
+            formatter: cartesianLabelFormatter,
+            fontSize: displayOptions.axisFontSize,
+          },
+        },
+      ],
+    };
+  }
+
+  if (config.chartType === "area") {
+    return {
+      ...commonCartesianOption,
+      series: [
+        {
+          name: config.title,
+          type: "line",
+          data: yAxisData,
+          smooth: displayOptions.smoothLines,
+          symbolSize: displayOptions.pointSize,
+          lineStyle: {
+            width: displayOptions.lineWidth,
+          },
+          areaStyle: {
+            opacity: displayOptions.areaOpacity,
+          },
+          labelLayout: {
+            hideOverlap: true,
+            moveOverlap: "shiftY",
+          },
+          label: {
+            show: displayOptions.showLabels,
+            position: "top",
+            formatter: cartesianLabelFormatter,
+            fontSize: displayOptions.axisFontSize,
+          },
+        },
+      ],
+    };
+  }
+
+  return {
+    ...commonCartesianOption,
+    series: [
+      {
+        name: config.title,
+        type: "bar",
+        data: yAxisData,
+        barMaxWidth: displayOptions.barWidth,
+        itemStyle: {
+          borderRadius: [
+            displayOptions.barRadius,
+            displayOptions.barRadius,
+            0,
+            0,
+          ],
+        },
+        labelLayout: {
+          hideOverlap: true,
+          moveOverlap: "shiftY",
+        },
+        label: {
+          show: displayOptions.showLabels,
+          position: "top",
+          formatter: cartesianLabelFormatter,
+          fontSize: displayOptions.axisFontSize,
+        },
+      },
+    ],
+  };
 }
 
 export function ChartView({
@@ -261,6 +613,13 @@ export function ChartView({
 
     return buildGroupedData(rows, config);
   }, [rows, config, compatibilityMessage]);
+
+  const chartOption = useMemo(() => {
+    return buildChartOption({
+      config,
+      chartData,
+    });
+  }, [config, chartData]);
 
   async function downloadPng() {
     if (!chartRef.current || chartData.length === 0) return;
@@ -311,96 +670,17 @@ export function ChartView({
       );
     }
 
-    if (config.chartType === "pie") {
-      return (
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Tooltip formatter={(value) => formatNumber(Number(value))} />
-            <Pie
-              data={chartData}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              outerRadius={150}
-              label
-            >
-              {chartData.map((_, index) => (
-                <Cell key={index} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Pie>
-          </PieChart>
-        </ResponsiveContainer>
-      );
-    }
-
-    if (config.chartType === "line") {
-      return (
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} />
-            <Tooltip formatter={(value) => formatNumber(Number(value))} />
-            <Line
-              type="monotone"
-              dataKey="value"
-              stroke="#0f766e"
-              strokeWidth={2}
-              dot={{ r: 3 }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      );
-    }
-
-    if (config.chartType === "area") {
-      return (
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} />
-            <Tooltip formatter={(value) => formatNumber(Number(value))} />
-            <Area
-              type="monotone"
-              dataKey="value"
-              stroke="#0f766e"
-              fill="#0f766e"
-              fillOpacity={0.18}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      );
-    }
-
-    if (config.chartType === "scatter") {
-      return (
-        <ResponsiveContainer width="100%" height="100%">
-          <ScatterChart>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="x" type="number" tick={{ fontSize: 11 }} />
-            <YAxis dataKey="y" type="number" tick={{ fontSize: 11 }} />
-            <Tooltip
-              cursor={{ strokeDasharray: "3 3" }}
-              formatter={(value) => formatNumber(Number(value))}
-            />
-            <Scatter data={chartData} fill="#0f766e" />
-          </ScatterChart>
-        </ResponsiveContainer>
-      );
-    }
-
     return (
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-          <YAxis tick={{ fontSize: 11 }} />
-          <Tooltip formatter={(value) => formatNumber(Number(value))} />
-          <Bar dataKey="value" fill="#0f766e" radius={[8, 8, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
+      <ReactECharts
+        option={chartOption}
+        notMerge
+        lazyUpdate
+        style={{
+          width: "100%",
+          height: "100%",
+          minHeight: 430,
+        }}
+      />
     );
   }
 

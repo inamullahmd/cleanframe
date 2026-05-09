@@ -1,24 +1,32 @@
 "use client";
 
+import type { ElementType } from "react";
 import { useMemo, useState } from "react";
 import {
+  AlertTriangle,
   BrushCleaning,
   CheckCircle2,
+  Copy,
+  Gauge,
   History,
-  Sparkles,
+  Rows3,
+  Sigma,
   TriangleAlert,
+  Wrench,
 } from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   CheckSelect,
   type CheckSelectOption,
 } from "@/components/ui/check-select";
 import { InputWithLabel } from "@/components/ui/input-with-label";
-import type { ColumnType, DatasetRow } from "@/types/dataset";
-import type { ColumnProfile } from "@/types/profile";
-import type { MissingValueStrategy } from "@/types/cleaning";
 import { isMissingValue } from "@/lib/profile/detectMissingValues";
 import { useWorkspaceStore } from "@/store/workspaceStore";
+import type { MissingValueStrategy } from "@/types/cleaning";
+import type { ColumnType, DatasetRow } from "@/types/dataset";
+import type { ColumnProfile, DatasetProfile } from "@/types/profile";
 
 const NUMERIC_TYPES: ColumnType[] = [
   "integer",
@@ -63,11 +71,7 @@ const BASE_STRATEGIES: CheckSelectOption<MissingValueStrategy>[] = [
 ];
 
 const NUMERIC_STRATEGIES: CheckSelectOption<MissingValueStrategy>[] = [
-  {
-    value: "fill_zero",
-    label: "Fill Zero",
-    description: "Replace missing values with 0.",
-  },
+  { value: "fill_zero", label: "Fill Zero", description: "Replace with 0." },
   {
     value: "fill_median",
     label: "Fill Median",
@@ -99,7 +103,7 @@ const CATEGORY_STRATEGIES: CheckSelectOption<MissingValueStrategy>[] = [
   {
     value: "fill_unknown",
     label: "Fill Unknown",
-    description: 'Replace missing values with "Unknown".',
+    description: 'Replace with "Unknown".',
   },
 ];
 
@@ -107,7 +111,7 @@ const TEXT_STRATEGIES: CheckSelectOption<MissingValueStrategy>[] = [
   {
     value: "fill_unknown",
     label: "Fill Unknown",
-    description: 'Replace missing values with "Unknown".',
+    description: 'Replace with "Unknown".',
   },
 ];
 
@@ -123,36 +127,57 @@ const DATE_STRATEGIES: CheckSelectOption<MissingValueStrategy>[] = [
   {
     value: "fill_previous",
     label: "Fill Previous",
-    description: "Use the previous available value in row order.",
+    description: "Use the previous available value.",
   },
   {
     value: "fill_next",
     label: "Fill Next",
-    description: "Use the next available value in row order.",
+    description: "Use the next available value.",
   },
 ];
 
-function getStrategyOptions(type: ColumnType): CheckSelectOption<MissingValueStrategy>[] {
+function formatColumnTypeLabel(type: ColumnType): string {
+  const labels: Record<ColumnType, string> = {
+    integer: "Integer",
+    decimal: "Decimal",
+    number: "Number",
+    percentage: "Percentage",
+    currency: "Currency",
+    date: "Date",
+    datetime: "Date Time",
+    time: "Time",
+    boolean: "Boolean",
+    category: "Category",
+    text: "Text",
+    id: "ID",
+    uuid: "UUID",
+    email: "Email",
+    phone: "Phone",
+    url: "URL",
+    postal_code: "Postal Code",
+    country_code: "Country Code",
+    latitude: "Latitude",
+    longitude: "Longitude",
+    json: "JSON",
+  };
+
+  return labels[type] ?? type;
+}
+
+function getStrategyOptions(
+  type: ColumnType,
+): CheckSelectOption<MissingValueStrategy>[] {
   if (NUMERIC_TYPES.includes(type)) {
     return [...BASE_STRATEGIES, ...NUMERIC_STRATEGIES];
   }
-
-  if (type === "category") {
-    return [...BASE_STRATEGIES, ...CATEGORY_STRATEGIES];
-  }
-
-  if (type === "boolean") {
-    return [...BASE_STRATEGIES, ...BOOLEAN_STRATEGIES];
-  }
-
+  if (type === "category") return [...BASE_STRATEGIES, ...CATEGORY_STRATEGIES];
+  if (type === "boolean") return [...BASE_STRATEGIES, ...BOOLEAN_STRATEGIES];
   if (DATE_LIKE_TYPES.includes(type)) {
     return [...BASE_STRATEGIES, ...DATE_STRATEGIES];
   }
-
   if (TEXT_LIKE_TYPES.includes(type)) {
     return [...BASE_STRATEGIES, ...TEXT_STRATEGIES];
   }
-
   return BASE_STRATEGIES;
 }
 
@@ -161,7 +186,6 @@ function getSuggestedStrategy(column: ColumnProfile): MissingValueStrategy {
   if (column.type === "category") return "fill_mode";
   if (column.type === "boolean") return "fill_mode";
   if (column.type === "text") return "fill_unknown";
-
   return "leave";
 }
 
@@ -194,20 +218,16 @@ function getPreviewValue({
   if (strategy === "fill_previous") {
     for (let index = rowIndex - 1; index >= 0; index -= 1) {
       const value = rows[index]?.[column.name];
-
       if (!isMissingValue(value)) return String(value);
     }
-
     return "";
   }
 
   if (strategy === "fill_next") {
     for (let index = rowIndex + 1; index < rows.length; index += 1) {
       const value = rows[index]?.[column.name];
-
       if (!isMissingValue(value)) return String(value);
     }
-
     return "";
   }
 
@@ -234,7 +254,141 @@ function formatStrategyLabel(strategy: MissingValueStrategy): string {
 }
 
 function getColumnOptionLabel(column: ColumnProfile): string {
-  return `${column.name} · ${column.missingCount} missing`;
+  return `${column.name} · ${column.missingCount.toLocaleString()} missing`;
+}
+
+function formatCount(value: number): string {
+  return value.toLocaleString();
+}
+
+function getQualityLabel(score: number): string {
+  if (score >= 90) return "Excellent";
+  if (score >= 75) return "Good";
+  if (score >= 60) return "Review";
+  return "Risk";
+}
+
+function getQualityBadgeVariant(score: number) {
+  return score >= 75 ? "secondary" : "destructive";
+}
+
+function MetricChip({
+  icon: Icon,
+  label,
+  value,
+  intent = "default",
+}: {
+  icon: ElementType;
+  label: string;
+  value: string;
+  intent?: "default" | "warning" | "danger";
+}) {
+  const valueClassName =
+    intent === "danger"
+      ? "text-rose-700 dark:text-rose-300"
+      : intent === "warning"
+        ? "text-amber-700 dark:text-amber-300"
+        : "text-foreground";
+
+  return (
+    <div className="inline-flex h-9 items-center gap-2 rounded-2xl border border-border/70 bg-background px-3 shadow-sm">
+      <span className="inline-flex size-5 items-center justify-center rounded-full border border-border/70 bg-muted/50 text-muted-foreground">
+        <Icon className="size-3.5" />
+      </span>
+      <span className="text-[11px] font-medium text-muted-foreground">
+        {label}
+      </span>
+      <span className={`text-sm font-bold ${valueClassName}`}>{value}</span>
+    </div>
+  );
+}
+
+function HeaderMetrics({
+  profile,
+  numericColumnCount,
+  columnsWithMissingCount,
+}: {
+  profile: DatasetProfile;
+  numericColumnCount: number;
+  columnsWithMissingCount: number;
+}) {
+  return (
+    <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
+      <MetricChip
+        icon={Rows3}
+        label="Rows"
+        value={formatCount(profile.rowCount)}
+      />
+      <MetricChip
+        icon={Sigma}
+        label="Numeric"
+        value={formatCount(numericColumnCount)}
+      />
+      <MetricChip
+        icon={TriangleAlert}
+        label="With missing"
+        value={formatCount(columnsWithMissingCount)}
+        intent={columnsWithMissingCount > 0 ? "warning" : "default"}
+      />
+      <MetricChip
+        icon={Copy}
+        label="Duplicates"
+        value={formatCount(profile.duplicateRowCount)}
+        intent={profile.duplicateRowCount > 0 ? "warning" : "default"}
+      />
+      <MetricChip
+        icon={AlertTriangle}
+        label="Warnings"
+        value={formatCount(profile.parseErrors.length)}
+        intent={profile.parseErrors.length > 0 ? "danger" : "default"}
+      />
+
+      <div className="inline-flex h-9 items-center gap-2 rounded-2xl border border-border/70 bg-background px-3 shadow-sm">
+        <span className="inline-flex size-5 items-center justify-center rounded-full border border-border/70 bg-muted/50 text-muted-foreground">
+          <Gauge className="size-3.5" />
+        </span>
+        <span className="text-[11px] font-medium text-muted-foreground">
+          Quality
+        </span>
+        <span className="text-sm font-bold text-foreground">
+          {profile.qualityScore}/100
+        </span>
+        <Badge variant={getQualityBadgeVariant(profile.qualityScore)}>
+          {getQualityLabel(profile.qualityScore)}
+        </Badge>
+      </div>
+    </div>
+  );
+}
+
+function ToolChip({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <span className="inline-flex h-8 items-center rounded-2xl border border-border/70 bg-background px-3 text-xs text-muted-foreground shadow-sm">
+      {label}:{" "}
+      <span className="ml-1 font-semibold text-foreground">{value}</span>
+    </span>
+  );
+}
+
+function InfoLine({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="text-xs leading-5 text-muted-foreground">
+      {label}:{" "}
+      <span className="font-semibold text-foreground">{value}</span>
+    </div>
+  );
 }
 
 export function CleanPanel() {
@@ -251,11 +405,19 @@ export function CleanPanel() {
     );
   }, [workspace]);
 
+  const numericColumnCount = useMemo(() => {
+    return (
+      workspace?.profile.columns.filter((column) =>
+        NUMERIC_TYPES.includes(column.type),
+      ).length ?? 0
+    );
+  }, [workspace]);
+
   const columnOptions: CheckSelectOption<string>[] = useMemo(() => {
     return columnsWithMissing.map((column) => ({
       value: column.name,
       label: getColumnOptionLabel(column),
-      description: `${column.type} column`,
+      description: `${formatColumnTypeLabel(column.type)} column`,
     }));
   }, [columnsWithMissing]);
 
@@ -270,6 +432,7 @@ export function CleanPanel() {
   const [strategy, setStrategy] = useState<MissingValueStrategy>(
     selectedColumn ? getSuggestedStrategy(selectedColumn) : "leave",
   );
+
   const [customValue, setCustomValue] = useState("");
 
   const rows = workspace?.workingRows ?? [];
@@ -282,10 +445,7 @@ export function CleanPanel() {
     if (!selectedColumn) return [];
 
     return rows
-      .map((row, index) => ({
-        row,
-        index,
-      }))
+      .map((row, index) => ({ row, index }))
       .filter((item) => isMissingValue(item.row[selectedColumn.name]));
   }, [rows, selectedColumn]);
 
@@ -309,7 +469,6 @@ export function CleanPanel() {
 
   function handleColumnChange(columnName: string) {
     const column = columnsWithMissing.find((item) => item.name === columnName);
-
     setSelectedColumnName(columnName);
     setStrategy(column ? getSuggestedStrategy(column) : "leave");
     setCustomValue("");
@@ -326,261 +485,279 @@ export function CleanPanel() {
   }
 
   const hasMissingValues = columnsWithMissing.length > 0;
+
   const canApply =
     Boolean(selectedColumn) &&
     strategy !== "leave" &&
     (strategy !== "fill_custom" || customValue.trim().length > 0);
 
   return (
-    <section className="grid h-full min-h-0 overflow-hidden rounded-3xl border bg-background lg:grid-cols-[380px_minmax(0,1fr)]">
-      <aside className="min-h-0 overflow-y-auto border-b bg-muted/10 p-4 lg:border-b-0 lg:border-r">
-        <div className="rounded-2xl border bg-background p-4 shadow-sm">
-          <div className="flex items-start gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border bg-muted/30">
-              <BrushCleaning className="size-5 text-foreground" />
-            </div>
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[1.35rem] border border-border bg-background shadow-sm">
+      <div className="shrink-0 border-b border-border/70 px-4 py-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-muted/35 text-foreground">
+              <BrushCleaning className="size-5" />
+            </span>
 
-            <div>
-              <h2 className="text-sm font-semibold text-foreground">
+            <div className="min-w-0">
+              <h2 className="text-[15px] font-bold tracking-[-0.02em] text-foreground">
                 Clean missing values
               </h2>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                Choose a strategy, preview the changes, then apply the fix to
-                the working dataset.
+              <p className="mt-1 text-xs text-muted-foreground">
+                Choose a strategy, preview the changes, and apply fixes to the
+                working dataset.
               </p>
             </div>
           </div>
+
+          <HeaderMetrics
+            profile={workspace.profile}
+            numericColumnCount={numericColumnCount}
+            columnsWithMissingCount={columnsWithMissing.length}
+          />
         </div>
+      </div>
 
-        <div className="mt-4 space-y-4">
-          {!hasMissingValues ? (
-            <div className="rounded-2xl border bg-muted/20 p-4 text-sm text-muted-foreground shadow-sm">
-              <div className="mb-2 flex items-center gap-2 text-foreground">
-                <CheckCircle2 className="size-4 text-primary" />
-                <span className="font-semibold">No missing values found</span>
-              </div>
-              Your current working dataset has no detected missing values.
-            </div>
-          ) : (
-            <>
-              <CheckSelect<string>
-                label="Column"
-                value={selectedColumn?.name ?? ""}
-                options={columnOptions}
-                onChange={handleColumnChange}
-              />
+      <div className="shrink-0 border-b border-border/70 bg-muted/[0.18] px-4 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <ToolChip
+              label="Original rows"
+              value={workspace.rawRows.length.toLocaleString()}
+            />
+            <ToolChip
+              label="Working rows"
+              value={workspace.workingRows.length.toLocaleString()}
+            />
+            <ToolChip
+              label="Cleaning steps"
+              value={workspace.cleaningSteps.length.toLocaleString()}
+            />
+          </div>
 
-              <CheckSelect<MissingValueStrategy>
-                label="Fix strategy"
-                value={strategy}
-                options={strategyOptions}
-                onChange={setStrategy}
-              />
-
-              {strategy === "fill_custom" && (
-                <InputWithLabel
-                  label="Custom replacement"
-                  value={customValue}
-                  placeholder="Enter replacement value"
-                  helpText="This value will replace every missing cell in the selected column."
-                  onChange={(event) => setCustomValue(event.target.value)}
-                />
-              )}
-
-              {selectedColumn && (
-                <div className="rounded-2xl border bg-muted/25 p-4 text-xs leading-5 text-muted-foreground shadow-sm">
-                  <p>
-                    Selected column:{" "}
-                    <span className="font-semibold text-foreground">
-                      {selectedColumn.name}
-                    </span>
-                  </p>
-                  <p>
-                    Type:{" "}
-                    <span className="font-semibold text-foreground">
-                      {selectedColumn.type}
-                    </span>
-                  </p>
-                  <p>
-                    Missing cells:{" "}
-                    <span className="font-semibold text-foreground">
-                      {selectedColumn.missingCount.toLocaleString()}
-                    </span>
-                  </p>
-                  <p>
-                    Suggested strategy:{" "}
-                    <span className="font-semibold text-foreground">
-                      {formatStrategyLabel(getSuggestedStrategy(selectedColumn))}
-                    </span>
-                  </p>
-                </div>
-              )}
-
-              <Button
-                type="button"
-                className="w-full"
-                disabled={!canApply}
-                onClick={applyFix}
-              >
-                <Sparkles className="mr-2 size-4" />
-                Apply fix
-              </Button>
-            </>
-          )}
-
-          {workspace.cleaningSteps.length > 0 && (
+          {workspace.cleaningSteps.length > 0 ? (
             <Button
               type="button"
               variant="outline"
-              className="w-full"
+              className="h-8 rounded-xl px-3 text-xs"
               onClick={resetCleaning}
             >
+              <History className="mr-1.5 size-3.5" />
               Reset cleaning
             </Button>
-          )}
+          ) : null}
         </div>
-      </aside>
+      </div>
 
-      <main className="flex min-h-0 flex-col bg-background">
-        <div className="shrink-0 border-b px-5 py-4">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">
-                Preview changes
-              </h3>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                The original imported rows are preserved. Fixes apply only to
-                the working dataset.
-              </p>
-            </div>
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="grid h-full min-h-0 grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)]">
+          <aside className="border-b border-border/70 bg-muted/[0.08] p-4 xl:border-b-0 xl:border-r">
+            {!hasMissingValues ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+                  <div>
+                    <p className="font-semibold">No missing values found</p>
+                    <p className="mt-1 leading-5">
+                      Your current working dataset has no detected missing
+                      values.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-border bg-background p-4 shadow-sm">
+                  <div className="mb-3 flex items-center gap-2">
+                    <Wrench className="size-4 text-muted-foreground" />
+                    <h3 className="text-sm font-bold text-foreground">
+                      Fix settings
+                    </h3>
+                  </div>
 
-            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-              <span className="rounded-2xl border bg-muted/25 px-3 py-2">
-                Original rows:{" "}
-                <span className="font-semibold text-foreground">
-                  {workspace.rawRows.length.toLocaleString()}
-                </span>
-              </span>
+                  <div className="space-y-4">
+                    <CheckSelect
+                      label="Column"
+                      value={selectedColumn?.name ?? ""}
+                      options={columnOptions}
+                      onChange={handleColumnChange}
+                      triggerClassName="h-10 text-xs"
+                    />
 
-              <span className="rounded-2xl border bg-muted/25 px-3 py-2">
-                Working rows:{" "}
-                <span className="font-semibold text-foreground">
-                  {workspace.workingRows.length.toLocaleString()}
-                </span>
-              </span>
+                    <CheckSelect
+                      label="Fix strategy"
+                      value={strategy}
+                      options={strategyOptions}
+                      onChange={setStrategy}
+                      triggerClassName="h-10 text-xs"
+                    />
 
-              <span className="rounded-2xl border bg-muted/25 px-3 py-2">
-                Cleaning steps:{" "}
-                <span className="font-semibold text-foreground">
-                  {workspace.cleaningSteps.length.toLocaleString()}
-                </span>
-              </span>
-            </div>
-          </div>
-        </div>
+                    {strategy === "fill_custom" ? (
+                      <InputWithLabel
+                        label="Custom value"
+                        value={customValue}
+                        placeholder="Value to insert"
+                        inputClassName="h-10 text-xs"
+                        onChange={(event) => setCustomValue(event.target.value)}
+                      />
+                    ) : null}
 
-        <div className="min-h-0 flex-1 overflow-auto p-5">
-          {!hasMissingValues ? (
-            <div className="grid h-full min-h-[420px] place-items-center rounded-3xl border border-dashed bg-muted/10 p-8">
-              <div className="max-w-md text-center">
-                <CheckCircle2 className="mx-auto mb-4 size-10 text-primary" />
-                <h3 className="text-lg font-semibold text-foreground">
+                    {selectedColumn ? (
+                      <div className="rounded-2xl border border-border/70 bg-muted/[0.18] p-4">
+                        <div className="space-y-1.5">
+                          <InfoLine
+                            label="Selected column"
+                            value={selectedColumn.name}
+                          />
+                          <InfoLine
+                            label="Type"
+                            value={formatColumnTypeLabel(selectedColumn.type)}
+                          />
+                          <InfoLine
+                            label="Missing cells"
+                            value={selectedColumn.missingCount.toLocaleString()}
+                          />
+                          <InfoLine
+                            label="Suggested strategy"
+                            value={formatStrategyLabel(
+                              getSuggestedStrategy(selectedColumn),
+                            )}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <Button
+                      type="button"
+                      className="h-9 w-full rounded-xl text-xs font-semibold"
+                      disabled={!canApply}
+                      onClick={applyFix}
+                    >
+                      Apply fix
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </aside>
+
+          <div className="min-h-0 overflow-auto p-4">
+            {!hasMissingValues ? (
+              <div className="rounded-2xl border border-dashed border-border bg-muted/[0.12] p-8 text-center">
+                <CheckCircle2 className="mx-auto size-8 text-emerald-600" />
+                <h3 className="mt-3 text-sm font-bold text-foreground">
                   Nothing to fix
                 </h3>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-muted-foreground">
                   Cleanframe does not detect missing values in the current
                   working dataset.
                 </p>
               </div>
-            </div>
-          ) : (
-            <div className="space-y-5">
-              <div className="rounded-3xl border bg-muted/10 p-4">
-                <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <TriangleAlert className="size-4 text-amber-600 dark:text-amber-300" />
-                  Affected row preview
-                </div>
-
-                <div className="overflow-hidden rounded-2xl border bg-background">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-muted text-xs uppercase tracking-wide text-muted-foreground">
-                      <tr>
-                        <th className="w-24 border-b border-r px-4 py-3">
-                          Row
-                        </th>
-                        <th className="border-b border-r px-4 py-3">
-                          Before
-                        </th>
-                        <th className="border-b px-4 py-3">After</th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {previewRows.map((row) => (
-                        <tr key={row.rowIndex} className="border-b last:border-b-0">
-                          <td className="border-r px-4 py-3 text-xs font-medium text-muted-foreground">
-                            {(row.rowIndex + 1).toLocaleString()}
-                          </td>
-
-                          <td className="border-r bg-amber-100 px-4 py-3 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100">
-                            {row.before || "empty"}
-                          </td>
-
-                          <td className="px-4 py-3 font-medium text-foreground">
-                            {row.after || "empty"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {missingRowIndexes.length > previewRows.length && (
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    Showing first {previewRows.length} affected rows from{" "}
-                    {missingRowIndexes.length.toLocaleString()} total.
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-3xl border bg-muted/10 p-4">
-                <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <History className="size-4 text-muted-foreground" />
-                  Cleaning history
-                </div>
-
-                {workspace.cleaningSteps.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No cleaning steps have been applied yet.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {workspace.cleaningSteps
-                      .slice()
-                      .reverse()
-                      .map((step) => (
-                        <div
-                          key={step.id}
-                          className="rounded-2xl border bg-background p-3 text-sm shadow-sm"
-                        >
-                          <p className="font-medium text-foreground">
-                            {formatStrategyLabel(step.strategy)} ·{" "}
-                            {step.columnName}
-                          </p>
-
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {step.affectedRows.toLocaleString()} rows affected ·{" "}
-                            {new Date(step.createdAt).toLocaleString()}
-                          </p>
-                        </div>
-                      ))}
+            ) : (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-border bg-background p-4 shadow-sm">
+                  <div className="mb-3 flex items-center gap-2">
+                    <TriangleAlert className="size-4 text-amber-600" />
+                    <h4 className="text-sm font-bold text-foreground">
+                      Affected row preview
+                    </h4>
                   </div>
-                )}
+
+                  <p className="mb-3 text-xs leading-5 text-muted-foreground">
+                    The original imported rows are preserved. Fixes apply only
+                    to the working dataset.
+                  </p>
+
+                  <div className="overflow-hidden rounded-2xl border border-border">
+                    <table className="min-w-full border-collapse text-left text-xs">
+                      <thead className="bg-muted/70">
+                        <tr className="border-b border-border">
+                          <th className="w-[90px] border-r px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                            Row
+                          </th>
+                          <th className="border-r px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                            Before
+                          </th>
+                          <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                            After
+                          </th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {previewRows.map((row) => (
+                          <tr
+                            key={row.rowIndex}
+                            className="border-b border-border last:border-b-0"
+                          >
+                            <td className="border-r px-3 py-2 text-xs font-medium text-muted-foreground">
+                              {(row.rowIndex + 1).toLocaleString()}
+                            </td>
+                            <td className="border-r bg-amber-100 px-3 py-2 text-xs text-amber-950 dark:bg-amber-950/40 dark:text-amber-100">
+                              {row.before || "Empty"}
+                            </td>
+                            <td className="px-3 py-2 text-xs font-semibold text-foreground">
+                              {row.after || "Empty"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {missingRowIndexes.length > previewRows.length ? (
+                    <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                      Showing first {previewRows.length} affected rows from{" "}
+                      <span className="font-semibold text-foreground">
+                        {missingRowIndexes.length.toLocaleString()}
+                      </span>{" "}
+                      total.
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="rounded-2xl border border-border bg-background p-4 shadow-sm">
+                  <div className="mb-3 flex items-center gap-2">
+                    <History className="size-4 text-muted-foreground" />
+                    <h4 className="text-sm font-bold text-foreground">
+                      Cleaning history
+                    </h4>
+                  </div>
+
+                  {workspace.cleaningSteps.length === 0 ? (
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      No cleaning steps have been applied yet.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {workspace.cleaningSteps
+                        .slice()
+                        .reverse()
+                        .map((step) => (
+                          <div
+                            key={step.id}
+                            className="rounded-2xl border border-border/70 bg-muted/[0.12] p-3"
+                          >
+                            <div className="text-xs font-semibold text-foreground">
+                              {formatStrategyLabel(step.strategy)} ·{" "}
+                              {step.columnName}
+                            </div>
+                            <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                              {step.affectedRows.toLocaleString()} rows affected
+                              {" · "}
+                              {new Date(step.createdAt).toLocaleString()}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </main>
+      </div>
     </section>
   );
 }

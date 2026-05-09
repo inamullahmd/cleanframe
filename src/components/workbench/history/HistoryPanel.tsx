@@ -1,208 +1,280 @@
 "use client";
 
+import type { ElementType } from "react";
 import {
-    Clock3,
-    Database,
-    GitBranch,
-    RotateCcw,
-    ShieldCheck,
+  AlertTriangle,
+  Clock3,
+  Columns3,
+  Copy,
+  Gauge,
+  History,
+  RotateCcw,
+  Rows3,
+  ShieldCheck,
+  Sigma,
+  TriangleAlert,
 } from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { WorkspaceHistoryAction } from "@/types/history";
 import { useWorkspaceStore } from "@/store/workspaceStore";
+import type { WorkspaceHistoryAction } from "@/types/history";
+import type { DatasetProfile } from "@/types/profile";
 
-function getActionLabel(action: WorkspaceHistoryAction): string {
-    const labels: Record<WorkspaceHistoryAction, string> = {
-        dataset_loaded: "Dataset",
-        column_renamed: "Schema",
-        column_names_transformed: "Schema",
-        column_type_changed: "Schema",
-        missing_values_fixed: "Clean",
-        cleaning_reset: "Clean",
-        settings_changed: "Settings",
-        history_reverted: "Revert",
-        column_added: "Schema",
-    };
+const NUMERIC_TYPES = [
+  "integer",
+  "decimal",
+  "number",
+  "percentage",
+  "currency",
+  "latitude",
+  "longitude",
+];
 
-    return labels[action];
+function formatCount(value: number): string {
+  return value.toLocaleString();
 }
 
-function getActionTone(action: WorkspaceHistoryAction): string {
-    if (action === "history_reverted") {
-        return "border-blue-300 bg-blue-50 text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100";
-    }
+function getQualityLabel(score: number): string {
+  if (score >= 90) return "Excellent";
+  if (score >= 75) return "Good";
+  if (score >= 60) return "Review";
+  return "Risk";
+}
 
-    if (action === "missing_values_fixed" || action === "cleaning_reset") {
-        return "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100";
-    }
+function getQualityBadgeVariant(score: number) {
+  return score >= 75 ? "secondary" : "destructive";
+}
 
-    if (
-        action === "column_renamed" ||
-        action === "column_added" ||
-        action === "column_names_transformed" ||
-        action === "column_type_changed"
-    ) {
-        return "border-violet-300 bg-violet-50 text-violet-900 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-100";
-    }
+function MetricChip({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: ElementType;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="inline-flex h-9 items-center gap-2 rounded-2xl border border-border/70 bg-background px-3 shadow-sm">
+      <span className="inline-flex size-5 items-center justify-center rounded-full border border-border/70 bg-muted/50 text-muted-foreground">
+        <Icon className="size-3.5" />
+      </span>
+      <span className="text-[11px] font-medium text-muted-foreground">
+        {label}
+      </span>
+      <span className="text-sm font-bold text-foreground">{value}</span>
+    </div>
+  );
+}
 
-    if (action === "settings_changed") {
-        return "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100";
-    }
+function HeaderMetrics({
+  profile,
+  numericColumnCount,
+  columnsWithMissingCount,
+}: {
+  profile: DatasetProfile;
+  numericColumnCount: number;
+  columnsWithMissingCount: number;
+}) {
+  return (
+    <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
+      <MetricChip icon={Rows3} label="Rows" value={formatCount(profile.rowCount)} />
+      <MetricChip icon={Columns3} label="Columns" value={formatCount(profile.columnCount)} />
+      <MetricChip icon={Sigma} label="Numeric" value={formatCount(numericColumnCount)} />
+      <MetricChip icon={TriangleAlert} label="With missing" value={formatCount(columnsWithMissingCount)} />
+      <MetricChip icon={Copy} label="Duplicates" value={formatCount(profile.duplicateRowCount)} />
+      <MetricChip icon={AlertTriangle} label="Warnings" value={formatCount(profile.parseErrors.length)} />
 
-    return "border-border bg-muted/30 text-foreground";
+      <div className="inline-flex h-9 items-center gap-2 rounded-2xl border border-border/70 bg-background px-3 shadow-sm">
+        <span className="inline-flex size-5 items-center justify-center rounded-full border border-border/70 bg-muted/50 text-muted-foreground">
+          <Gauge className="size-3.5" />
+        </span>
+        <span className="text-[11px] font-medium text-muted-foreground">
+          Quality
+        </span>
+        <span className="text-sm font-bold text-foreground">
+          {profile.qualityScore}/100
+        </span>
+        <Badge variant={getQualityBadgeVariant(profile.qualityScore)}>
+          {getQualityLabel(profile.qualityScore)}
+        </Badge>
+      </div>
+    </div>
+  );
+}
+
+function getActionLabel(action: WorkspaceHistoryAction): string {
+  const labels: Record<WorkspaceHistoryAction, string> = {
+    dataset_loaded: "Dataset",
+    column_renamed: "Schema",
+    column_names_transformed: "Schema",
+    column_type_changed: "Schema",
+    column_added: "Schema",
+    column_deleted: "Schema",
+    missing_values_fixed: "Clean",
+    cleaning_reset: "Clean",
+    settings_changed: "Settings",
+    history_reverted: "Revert",
+  };
+
+  return labels[action];
+}
+
+function ToolChip({ label, value }: { label: string; value: string | number }) {
+  return (
+    <span className="inline-flex h-8 items-center rounded-2xl border border-border/70 bg-background px-3 text-xs text-muted-foreground shadow-sm">
+      {label}: <span className="ml-1 font-semibold text-foreground">{value}</span>
+    </span>
+  );
 }
 
 export function HistoryPanel() {
-    const workspace = useWorkspaceStore((state) => state.workspace);
-    const revertToHistoryPoint = useWorkspaceStore(
-        (state) => state.revertToHistoryPoint,
-    );
+  const workspace = useWorkspaceStore((state) => state.workspace);
+  const revertToHistoryPoint = useWorkspaceStore(
+    (state) => state.revertToHistoryPoint,
+  );
 
-    if (!workspace) return null;
+  if (!workspace) return null;
 
-    const history = workspace.history;
-    const currentHistoryId = history.at(-1)?.id;
+  const history = workspace.history;
+  const currentHistoryId = history.at(-1)?.id;
 
-    return (
-        <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border bg-background">
-            <div className="shrink-0 border-b px-5 py-4">
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                    <div className="flex items-start gap-3">
-                        <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border bg-muted/30">
-                            <GitBranch className="size-5 text-foreground" />
-                        </div>
+  const numericColumnCount = workspace.profile.columns.filter((column) =>
+    NUMERIC_TYPES.includes(column.type),
+  ).length;
 
-                        <div>
-                            <h2 className="text-sm font-semibold text-foreground">
-                                History
-                            </h2>
-                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                                Every schema, cleaning, and settings change creates a restore
-                                point.
-                            </p>
-                        </div>
-                    </div>
+  const columnsWithMissingCount = workspace.profile.columns.filter(
+    (column) => column.missingCount > 0,
+  ).length;
 
-                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-2 rounded-2xl border bg-muted/25 px-3 py-2">
-                            <Clock3 className="size-3.5" />
-                            {history.length.toLocaleString()} restore points
-                        </span>
+  return (
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[1.35rem] border border-border bg-background shadow-sm">
+      <div className="shrink-0 border-b border-border/70 px-4 py-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-muted/35 text-foreground">
+              <History className="size-5" />
+            </span>
 
-                        <span className="inline-flex items-center gap-2 rounded-2xl border bg-muted/25 px-3 py-2">
-                            <Database className="size-3.5" />
-                            {workspace.workingRows.length.toLocaleString()} working rows
-                        </span>
-
-                        <span className="inline-flex items-center gap-2 rounded-2xl border bg-muted/25 px-3 py-2">
-                            <ShieldCheck className="size-3.5" />
-                            Original rows preserved
-                        </span>
-                    </div>
-                </div>
+            <div className="min-w-0">
+              <h2 className="text-[15px] font-bold tracking-[-0.02em] text-foreground">
+                History
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Review restore points and revert the workspace to any previous
+                state.
+              </p>
             </div>
+          </div>
 
-            <div className="min-h-0 flex-1 overflow-auto p-5">
-                {history.length === 0 ? (
-                    <div className="grid h-full min-h-[420px] place-items-center rounded-3xl border border-dashed bg-muted/10 p-8">
-                        <div className="max-w-md text-center">
-                            <GitBranch className="mx-auto mb-4 size-10 text-muted-foreground" />
-                            <h3 className="text-lg font-semibold text-foreground">
-                                No history yet
-                            </h3>
-                            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                                Once you rename columns, change types, clean data, or update
-                                settings, restore points will appear here.
-                            </p>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="mx-auto max-w-5xl space-y-3">
-                        {history
-                            .slice()
-                            .reverse()
-                            .map((entry, reverseIndex) => {
-                                const isCurrent = entry.id === currentHistoryId;
-                                const originalIndex = history.length - reverseIndex;
+          <HeaderMetrics
+            profile={workspace.profile}
+            numericColumnCount={numericColumnCount}
+            columnsWithMissingCount={columnsWithMissingCount}
+          />
+        </div>
+      </div>
 
-                                return (
-                                    <article
-                                        key={entry.id}
-                                        className={`rounded-3xl border bg-background p-4 shadow-sm ${isCurrent ? "ring-2 ring-primary/15" : ""
-                                            }`}
-                                    >
-                                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                                            <div className="min-w-0">
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <span className="rounded-xl border bg-muted/30 px-2 py-1 text-xs font-semibold text-muted-foreground">
-                                                        #{originalIndex}
-                                                    </span>
+      <div className="shrink-0 border-b border-border/70 bg-muted/[0.18] px-4 py-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <ToolChip label="Restore points" value={history.length} />
+          <ToolChip label="Working rows" value={workspace.workingRows.length.toLocaleString()} />
+          <ToolChip label="Original rows" value={workspace.rawRows.length.toLocaleString()} />
+        </div>
+      </div>
 
-                                                    <span
-                                                        className={`rounded-xl border px-2 py-1 text-xs font-semibold ${getActionTone(
-                                                            entry.action,
-                                                        )}`}
-                                                    >
-                                                        {getActionLabel(entry.action)}
-                                                    </span>
-
-                                                    {isCurrent && (
-                                                        <span className="rounded-xl border border-primary/30 bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
-                                                            Current
-                                                        </span>
-                                                    )}
-                                                </div>
-
-                                                <h3 className="mt-3 text-sm font-semibold text-foreground">
-                                                    {entry.label}
-                                                </h3>
-
-                                                <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                                                    {entry.description}
-                                                </p>
-
-                                                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
-                                                    <span>
-                                                        {new Date(entry.createdAt).toLocaleString()}
-                                                    </span>
-                                                    <span>
-                                                        Rows:{" "}
-                                                        <strong className="font-semibold text-foreground">
-                                                            {entry.rowCount.toLocaleString()}
-                                                        </strong>
-                                                    </span>
-                                                    <span>
-                                                        Columns:{" "}
-                                                        <strong className="font-semibold text-foreground">
-                                                            {entry.columnCount.toLocaleString()}
-                                                        </strong>
-                                                    </span>
-                                                    <span>
-                                                        Quality:{" "}
-                                                        <strong className="font-semibold text-foreground">
-                                                            {entry.qualityScore}/100
-                                                        </strong>
-                                                    </span>
-                                                </div>
-                                            </div>
-
-                                            <Button
-                                                type="button"
-                                                variant={isCurrent ? "secondary" : "outline"}
-                                                disabled={isCurrent}
-                                                onClick={() => revertToHistoryPoint(entry.id)}
-                                                className="shrink-0 rounded-xl"
-                                            >
-                                                <RotateCcw className="mr-2 size-4" />
-                                                {isCurrent ? "Current point" : "Revert here"}
-                                            </Button>
-                                        </div>
-                                    </article>
-                                );
-                            })}
-                    </div>
-                )}
+      <div className="min-h-0 flex-1 overflow-auto bg-muted/[0.06] p-4">
+        {history.length === 0 ? (
+          <div className="flex h-full min-h-[320px] items-center justify-center rounded-2xl border border-dashed border-border bg-background">
+            <div className="max-w-md text-center">
+              <Clock3 className="mx-auto size-8 text-muted-foreground" />
+              <h3 className="mt-3 text-sm font-bold text-foreground">
+                No history yet
+              </h3>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Restore points will appear here after workspace changes.
+              </p>
             </div>
-        </section>
-    );
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {history
+              .slice()
+              .reverse()
+              .map((entry, reverseIndex) => {
+                const isCurrent = entry.id === currentHistoryId;
+                const originalIndex = history.length - reverseIndex;
+
+                return (
+                  <article
+                    key={entry.id}
+                    className={`rounded-2xl border bg-background p-4 shadow-sm transition hover:shadow-md ${
+                      isCurrent ? "border-primary/30 ring-2 ring-primary/5" : ""
+                    }`}
+                  >
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-flex size-7 items-center justify-center rounded-xl border border-border/70 bg-muted/35 text-xs font-bold text-muted-foreground">
+                            #{originalIndex}
+                          </span>
+
+                          <span className="inline-flex h-7 items-center rounded-xl border border-border bg-muted/30 px-2.5 text-[11px] font-bold text-foreground">
+                            {getActionLabel(entry.action)}
+                          </span>
+
+                          {isCurrent ? (
+                            <span className="inline-flex h-7 items-center rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 text-[11px] font-bold text-emerald-700">
+                              Current
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <h3 className="mt-3 text-sm font-bold tracking-[-0.01em] text-foreground">
+                          {entry.label}
+                        </h3>
+
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                          {entry.description}
+                        </p>
+
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                          <span>
+                            {new Date(entry.createdAt).toLocaleString()}
+                          </span>
+                          <span>Rows: {entry.rowCount.toLocaleString()}</span>
+                          <span>Columns: {entry.columnCount.toLocaleString()}</span>
+                          <span>Quality: {entry.qualityScore}/100</span>
+                        </div>
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant={isCurrent ? "outline" : "default"}
+                        disabled={isCurrent}
+                        onClick={() => revertToHistoryPoint(entry.id)}
+                        className="h-8 shrink-0 rounded-xl px-3 text-xs"
+                      >
+                        {isCurrent ? (
+                          <>
+                            <ShieldCheck className="mr-1.5 size-3.5" />
+                            Current point
+                          </>
+                        ) : (
+                          <>
+                            <RotateCcw className="mr-1.5 size-3.5" />
+                            Revert here
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </article>
+                );
+              })}
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }

@@ -8,6 +8,7 @@ export type WorkspaceHistoryAction =
   | "dataset_loaded"
   | "column_renamed"
   | "column_added"
+  | "column_deleted"
   | "column_names_transformed"
   | "column_type_changed"
   | "missing_values_fixed"

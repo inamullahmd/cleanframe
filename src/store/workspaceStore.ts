@@ -1,4 +1,5 @@
 import { create } from "zustand";
+
 import type { ColumnType, DatasetRow } from "@/types/dataset";
 import type { DatasetWorkspace } from "@/types/workspace";
 import type {
@@ -33,6 +34,8 @@ export type ColumnNameTransform =
   | "camel_case"
   | "trim";
 
+export type AddColumnSourceMode = "custom_value" | "from_columns";
+
 type WorkspaceStatus = "idle" | "loading" | "ready" | "error";
 
 type ApplyMissingValueFixOptions = {
@@ -45,6 +48,9 @@ type AddColumnOptions = {
   columnName: string;
   columnType: ColumnType;
   defaultValue?: string;
+  sourceMode?: AddColumnSourceMode;
+  sourceColumns?: string[];
+  expression?: string;
 };
 
 type WorkspaceState = {
@@ -69,6 +75,7 @@ type WorkspaceState = {
   renameColumn: (oldName: string, newName: string) => void;
   transformColumnNames: (transform: ColumnNameTransform) => void;
   addColumn: (options: AddColumnOptions) => void;
+  deleteColumn: (columnName: string) => void;
   updateColumnType: (columnName: string, nextType: ColumnType) => void;
 
   applyMissingValueFix: (options: ApplyMissingValueFixOptions) => void;
@@ -96,6 +103,29 @@ const ACRONYM_WORDS = new Set([
   "ssn",
   "dob",
 ]);
+
+const BLOCKED_EXPRESSION_TOKENS = [
+  "window",
+  "document",
+  "globalThis",
+  "constructor",
+  "prototype",
+  "__proto__",
+  "function",
+  "Function",
+  "eval",
+  "import",
+  "require",
+  "fetch",
+  "XMLHttpRequest",
+  "localStorage",
+  "sessionStorage",
+  "process",
+  "while",
+  "for",
+  "class",
+  "=>",
+];
 
 function getApproxByteSize(value: string): number {
   return new TextEncoder().encode(value).length;
@@ -337,7 +367,6 @@ function makeUniqueColumnNames(names: string[]): string[] {
   return names.map((name) => {
     const baseName = name.trim() || "Column";
     const normalizedBaseName = baseName.toLowerCase();
-
     const currentCount = seen.get(normalizedBaseName) ?? 0;
 
     if (currentCount === 0) {
@@ -429,6 +458,213 @@ function rebuildWorkspaceProfile({
     ...normalizedWorkspace,
     profile,
   };
+}
+
+function stringifyExpressionResult(value: unknown): string {
+  if (value === null || value === undefined) return "";
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : "";
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+
+  return String(value);
+}
+
+function normalizeFormulaExpression(expression: string): string {
+  const trimmedExpression = expression.trim();
+
+  if (trimmedExpression.startsWith("=")) {
+    return trimmedExpression.slice(1).trim();
+  }
+
+  return trimmedExpression;
+}
+
+function isExpressionSafe(expression: string): boolean {
+  const lowerExpression = expression.toLowerCase();
+
+  return !BLOCKED_EXPRESSION_TOKENS.some((token) =>
+    lowerExpression.includes(token.toLowerCase()),
+  );
+}
+
+function parseFormulaNumber(value: unknown): number {
+  if (isMissingValue(value)) return 0;
+
+  const normalized = String(value)
+    .trim()
+    .replaceAll(",", "")
+    .replace("%", "")
+    .replace(/^[^\d.-]+/, "");
+
+  const parsed = Number(normalized);
+
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function titleCaseValue(value: unknown): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getFormulaColumnReferences(expression: string): string[] {
+  const references = new Set<string>();
+  const regex = /\{([^}]+)\}/g;
+
+  let match = regex.exec(expression);
+
+  while (match) {
+    const columnName = match[1]?.trim();
+
+    if (columnName) {
+      references.add(columnName);
+    }
+
+    match = regex.exec(expression);
+  }
+
+  return [...references];
+}
+
+function evaluateColumnExpression({
+  row,
+  fields,
+  expression,
+}: {
+  row: DatasetRow;
+  fields: string[];
+  expression: string;
+}): string {
+  const normalizedExpression = normalizeFormulaExpression(expression);
+
+  if (!normalizedExpression || !isExpressionSafe(normalizedExpression)) {
+    return "";
+  }
+
+  const referencedColumns = getFormulaColumnReferences(normalizedExpression);
+
+  const hasInvalidReference = referencedColumns.some(
+    (columnName) => !fields.includes(columnName),
+  );
+
+  if (hasInvalidReference) {
+    return "";
+  }
+
+  const jsExpression = normalizedExpression.replace(
+    /\{([^}]+)\}/g,
+    (_match, columnName: string) => {
+      return `value(${JSON.stringify(columnName.trim())})`;
+    },
+  );
+
+  const value = (columnName: string) => row[columnName] ?? "";
+
+  const helpers = {
+    value,
+    text: (input: unknown) => String(input ?? ""),
+    number: parseFormulaNumber,
+    concat: (...parts: unknown[]) =>
+      parts.map((part) => String(part ?? "")).join(""),
+    upper: (input: unknown) => String(input ?? "").toUpperCase(),
+    lower: (input: unknown) => String(input ?? "").toLowerCase(),
+    trim: (input: unknown) => String(input ?? "").trim(),
+    title: titleCaseValue,
+    abs: (input: unknown) => Math.abs(parseFormulaNumber(input)),
+    round: (input: unknown, digits = 0) => {
+      const numericValue = parseFormulaNumber(input);
+      const precision = Number.isFinite(Number(digits)) ? Number(digits) : 0;
+      const multiplier = 10 ** precision;
+
+      return Math.round(numericValue * multiplier) / multiplier;
+    },
+    min: (...values: unknown[]) => Math.min(...values.map(parseFormulaNumber)),
+    max: (...values: unknown[]) => Math.max(...values.map(parseFormulaNumber)),
+    coalesce: (...values: unknown[]) =>
+      values.find((item) => !isMissingValue(item)) ?? "",
+  };
+
+  try {
+    const evaluator = new Function(
+      "helpers",
+      `
+        "use strict";
+
+        const {
+          value,
+          text,
+          number,
+          concat,
+          upper,
+          lower,
+          trim,
+          title,
+          abs,
+          round,
+          min,
+          max,
+          coalesce
+        } = helpers;
+
+        return (${jsExpression});
+      `,
+    );
+
+    return stringifyExpressionResult(evaluator(helpers));
+  } catch {
+    return "";
+  }
+}
+
+function getAddedColumnValue({
+  row,
+  fields,
+  sourceMode,
+  sourceColumns,
+  expression,
+  defaultValue,
+}: {
+  row: DatasetRow;
+  fields: string[];
+  sourceMode: AddColumnSourceMode;
+  sourceColumns: string[];
+  expression: string;
+  defaultValue: string;
+}): string {
+  if (sourceMode === "custom_value") {
+    return defaultValue;
+  }
+
+  const validSourceColumns = sourceColumns.filter((columnName) =>
+    fields.includes(columnName),
+  );
+
+  if (validSourceColumns.length === 0) {
+    return "";
+  }
+
+  const normalizedExpression = normalizeFormulaExpression(expression);
+
+  if (normalizedExpression) {
+    return evaluateColumnExpression({
+      row,
+      fields,
+      expression: normalizedExpression,
+    });
+  }
+
+  if (validSourceColumns.length === 1) {
+    return String(row[validSourceColumns[0]] ?? "");
+  }
+
+  return validSourceColumns
+    .map((columnName) => String(row[columnName] ?? ""))
+    .join(" ");
 }
 
 function getColumnReplacementValue({
@@ -671,6 +907,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         outlierConfig: DEFAULT_OUTLIER_CONFIG,
         csvEncoding: DEFAULT_CSV_ENCODING,
       });
+
       return;
     }
 
@@ -707,8 +944,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     const duplicateExists = normalizedCurrent.fields.some(
       (field) =>
-        field !== oldName &&
-        field.toLowerCase() === trimmedName.toLowerCase(),
+        field !== oldName && field.toLowerCase() === trimmedName.toLowerCase(),
     );
 
     if (duplicateExists) return;
@@ -728,7 +964,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     );
 
     const previousOverrides = createTypeOverrides(normalizedCurrent);
-
     const nextOverrides: Partial<Record<string, ColumnType>> = {};
 
     for (const [field, type] of Object.entries(previousOverrides)) {
@@ -848,7 +1083,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       csvEncoding: get().csvEncoding,
       action: "column_names_transformed",
       label: "Formatted column names",
-      description: `Applied ${formatColumnNameTransformLabel(transform)} to all column names.`,
+      description: `Applied ${formatColumnNameTransformLabel(
+        transform,
+      )} to all column names.`,
     });
 
     persistWorkspace(nextWorkspace);
@@ -859,7 +1096,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     });
   },
 
-  addColumn: ({ columnName, columnType, defaultValue = "" }) => {
+  addColumn: ({
+    columnName,
+    columnType,
+    defaultValue = "",
+    sourceMode = "custom_value",
+    sourceColumns = [],
+    expression = "",
+  }) => {
     const current = get().workspace;
     const trimmedName = columnName.trim();
 
@@ -873,16 +1117,41 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     if (duplicateExists) return;
 
+    const safeSourceMode: AddColumnSourceMode =
+      sourceMode === "from_columns" ? "from_columns" : "custom_value";
+
+    const validSourceColumns = sourceColumns.filter((columnName) =>
+      normalizedCurrent.fields.includes(columnName),
+    );
+
+    if (safeSourceMode === "from_columns" && validSourceColumns.length === 0) {
+      return;
+    }
+
     const nextFields = [...normalizedCurrent.fields, trimmedName];
 
     const nextRawRows = normalizedCurrent.rawRows.map((row) => ({
       ...row,
-      [trimmedName]: defaultValue,
+      [trimmedName]: getAddedColumnValue({
+        row,
+        fields: normalizedCurrent.fields,
+        sourceMode: safeSourceMode,
+        sourceColumns: validSourceColumns,
+        expression,
+        defaultValue,
+      }),
     }));
 
     const nextWorkingRows = normalizedCurrent.workingRows.map((row) => ({
       ...row,
-      [trimmedName]: defaultValue,
+      [trimmedName]: getAddedColumnValue({
+        row,
+        fields: normalizedCurrent.fields,
+        sourceMode: safeSourceMode,
+        sourceColumns: validSourceColumns,
+        expression,
+        defaultValue,
+      }),
     }));
 
     const nextOverrides: Partial<Record<string, ColumnType>> = {
@@ -907,13 +1176,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       columnTypeOverrides: nextOverrides,
     });
 
+    const description =
+      safeSourceMode === "from_columns"
+        ? `Added "${trimmedName}" as ${columnType} from ${validSourceColumns
+            .map((columnName) => `"${columnName}"`)
+            .join(", ")}.`
+        : `Added "${trimmedName}" as ${columnType}.`;
+
     const nextWorkspace = appendHistory({
       workspace: rebuiltWorkspace,
       outlierConfig: get().outlierConfig,
       csvEncoding: get().csvEncoding,
       action: "column_added",
       label: "Added column",
-      description: `Added "${trimmedName}" as ${columnType}.`,
+      description,
     });
 
     persistWorkspace(nextWorkspace);
@@ -924,12 +1200,80 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     });
   },
 
+  deleteColumn: (columnName) => {
+  const current = get().workspace;
+
+  if (!current) return;
+
+  const normalizedCurrent = normalizeWorkspaceStructure(current);
+
+  if (!normalizedCurrent.fields.includes(columnName)) return;
+  if (normalizedCurrent.fields.length <= 1) return;
+
+  const nextFields = normalizedCurrent.fields.filter(
+    (field) => field !== columnName,
+  );
+
+  function removeColumnFromRow(row: DatasetRow): DatasetRow {
+    const nextRow: DatasetRow = {};
+
+    for (const field of nextFields) {
+      nextRow[field] = row[field] ?? "";
+    }
+
+    return nextRow;
+  }
+
+  const nextRawRows = normalizedCurrent.rawRows.map(removeColumnFromRow);
+  const nextWorkingRows = normalizedCurrent.workingRows.map(removeColumnFromRow);
+
+  const nextOverrides = createTypeOverrides(normalizedCurrent);
+  delete nextOverrides[columnName];
+
+  const dirtyWorkspace: DatasetWorkspace = {
+    ...normalizedCurrent,
+    fields: nextFields,
+    rawRows: nextRawRows,
+    workingRows: nextWorkingRows,
+    cleaningSteps: normalizedCurrent.cleaningSteps.filter(
+      (step) => step.columnName !== columnName,
+    ),
+    profile: {
+      ...normalizedCurrent.profile,
+      previewRows: nextWorkingRows.slice(0, 25),
+    },
+  };
+
+  const rebuiltWorkspace = rebuildWorkspaceProfile({
+    workspace: dirtyWorkspace,
+    outlierConfig: get().outlierConfig,
+    columnTypeOverrides: nextOverrides,
+  });
+
+  const nextWorkspace = appendHistory({
+    workspace: rebuiltWorkspace,
+    outlierConfig: get().outlierConfig,
+    csvEncoding: get().csvEncoding,
+    action: "column_deleted",
+    label: "Deleted column",
+    description: `Deleted "${columnName}" from the workspace.`,
+  });
+
+  persistWorkspace(nextWorkspace);
+
+  set({
+    workspace: nextWorkspace,
+    activePanel: "schema",
+  });
+},
+
   updateColumnType: (columnName, nextType) => {
     const current = get().workspace;
 
     if (!current) return;
 
     const normalizedCurrent = normalizeWorkspaceStructure(current);
+
     const previousType =
       normalizedCurrent.profile.columns.find(
         (column) => column.name === columnName,
@@ -937,7 +1281,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     if (previousType === nextType) return;
 
-    const overrides = {
+    const overrides: Partial<Record<string, ColumnType>> = {
       ...createTypeOverrides(normalizedCurrent),
       [columnName]: nextType,
     };
@@ -968,7 +1312,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const current = get().workspace;
 
     if (!current) return;
-
     if (strategy === "leave") return;
 
     const normalizedCurrent = normalizeWorkspaceStructure(current);
@@ -1085,6 +1428,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     if (!current) return;
 
     const normalizedCurrent = normalizeWorkspaceStructure(current);
+
     const targetEntry = normalizedCurrent.history.find(
       (entry) => entry.id === historyId,
     );

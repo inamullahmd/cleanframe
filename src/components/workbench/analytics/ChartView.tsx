@@ -1,9 +1,9 @@
 "use client";
 
-import * as htmlToImage from "html-to-image";
-import { Download } from "lucide-react";
-import { jsPDF } from "jspdf";
 import { useMemo, useRef } from "react";
+import * as htmlToImage from "html-to-image";
+import { jsPDF } from "jspdf";
+import { Download, Info } from "lucide-react";
 import {
   Area,
   AreaChart,
@@ -22,6 +22,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+
 import { Button } from "@/components/ui/button";
 import type { DatasetRow } from "@/types/dataset";
 import type {
@@ -134,7 +135,7 @@ function buildScatterData(
   config: ChartConfig,
 ): ChartDatum[] {
   return rows
-    .map<ChartDatum | null>((row) => {
+    .map((row): ChartDatum | null => {
       const x = parseNumber(row[config.xColumn]);
       const y = parseNumber(row[config.yColumn]);
 
@@ -213,7 +214,7 @@ function getCompatibilityMessage({
 
   if (["bar", "line", "area", "pie"].includes(config.chartType)) {
     if (!groupableColumns.includes(config.xColumn)) {
-      return "Select a groupable X column.";
+      return "Select a groupable column.";
     }
 
     if (
@@ -225,6 +226,12 @@ function getCompatibilityMessage({
   }
 
   return "";
+}
+
+function formatNumber(value: number) {
+  return value.toLocaleString(undefined, {
+    maximumFractionDigits: 2,
+  });
 }
 
 export function ChartView({
@@ -264,7 +271,6 @@ export function ChartView({
     });
 
     const link = document.createElement("a");
-
     link.download = `${config.title || "cleanframe-chart"}.png`;
     link.href = dataUrl;
     link.click();
@@ -290,7 +296,7 @@ export function ChartView({
     if (compatibilityMessage) {
       return (
         <ChartEmptyState
-          title="Incompatible chart configuration"
+          title="Chart cannot be rendered"
           description={compatibilityMessage}
         />
       );
@@ -299,8 +305,8 @@ export function ChartView({
     if (chartData.length === 0) {
       return (
         <ChartEmptyState
-          title="No chartable data"
-          description="Try a different column, aggregation, or chart type."
+          title="No chart data"
+          description="Try a different chart type, column, or aggregation."
         />
       );
     }
@@ -309,12 +315,14 @@ export function ChartView({
       return (
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Tooltip />
+            <Tooltip formatter={(value) => formatNumber(Number(value))} />
             <Pie
               data={chartData}
               dataKey="value"
               nameKey="name"
-              outerRadius={130}
+              cx="50%"
+              cy="50%"
+              outerRadius={150}
               label
             >
               {chartData.map((_, index) => (
@@ -330,16 +338,16 @@ export function ChartView({
       return (
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData}>
-            <CartesianGrid stroke="#e5e7eb" />
-            <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 12 }} />
-            <Tooltip />
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+            <YAxis tick={{ fontSize: 11 }} />
+            <Tooltip formatter={(value) => formatNumber(Number(value))} />
             <Line
               type="monotone"
               dataKey="value"
               stroke="#0f766e"
               strokeWidth={2}
-              dot={false}
+              dot={{ r: 3 }}
             />
           </LineChart>
         </ResponsiveContainer>
@@ -350,10 +358,10 @@ export function ChartView({
       return (
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartData}>
-            <CartesianGrid stroke="#e5e7eb" />
-            <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 12 }} />
-            <Tooltip />
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+            <YAxis tick={{ fontSize: 11 }} />
+            <Tooltip formatter={(value) => formatNumber(Number(value))} />
             <Area
               type="monotone"
               dataKey="value"
@@ -370,20 +378,13 @@ export function ChartView({
       return (
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart>
-            <CartesianGrid stroke="#e5e7eb" />
-            <XAxis
-              type="number"
-              dataKey="x"
-              name={config.xColumn}
-              tick={{ fontSize: 12 }}
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="x" type="number" tick={{ fontSize: 11 }} />
+            <YAxis dataKey="y" type="number" tick={{ fontSize: 11 }} />
+            <Tooltip
+              cursor={{ strokeDasharray: "3 3" }}
+              formatter={(value) => formatNumber(Number(value))}
             />
-            <YAxis
-              type="number"
-              dataKey="y"
-              name={config.yColumn}
-              tick={{ fontSize: 12 }}
-            />
-            <Tooltip cursor={{ strokeDasharray: "3 3" }} />
             <Scatter data={chartData} fill="#0f766e" />
           </ScatterChart>
         </ResponsiveContainer>
@@ -393,25 +394,26 @@ export function ChartView({
     return (
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={chartData}>
-          <CartesianGrid stroke="#e5e7eb" />
-          <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-          <YAxis tick={{ fontSize: 12 }} />
-          <Tooltip />
-          <Bar dataKey="value" fill="#0f766e" radius={[4, 4, 0, 0]} />
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+          <YAxis tick={{ fontSize: 11 }} />
+          <Tooltip formatter={(value) => formatNumber(Number(value))} />
+          <Bar dataKey="value" fill="#0f766e" radius={[8, 8, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     );
   }
 
   return (
-    <section className="flex min-h-0 flex-col bg-background">
-      <div className="flex shrink-0 items-center justify-between border-b px-5 py-4">
-        <div className="min-w-0">
-          <h3 className="truncate text-sm font-semibold text-foreground">
-            {config.title}
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3 border-b border-border/70 pb-3">
+        <div>
+          <h3 className="text-sm font-bold text-foreground">
+            {config.title || "Chart"}
           </h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {config.chartType} · {chartData.length} plotted items
+          <p className="mt-1 text-xs text-muted-foreground">
+            {config.chartType} · {chartData.length.toLocaleString()} plotted
+            items
           </p>
         </div>
 
@@ -419,35 +421,34 @@ export function ChartView({
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            onClick={downloadPng}
+            className="h-8 rounded-xl px-3 text-xs"
             disabled={chartData.length === 0}
+            onClick={downloadPng}
           >
-            <Download className="mr-2 size-4" />
+            <Download className="mr-1.5 size-3.5" />
             PNG
           </Button>
 
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            onClick={downloadPdf}
+            className="h-8 rounded-xl px-3 text-xs"
             disabled={chartData.length === 0}
+            onClick={downloadPdf}
           >
-            <Download className="mr-2 size-4" />
+            <Download className="mr-1.5 size-3.5" />
             PDF
           </Button>
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 bg-muted/10 p-5">
-        <div className="h-full min-h-[520px] rounded-3xl border bg-white p-6 text-black shadow-sm">
-          <div ref={chartRef} className="h-full min-h-[480px]">
-            {renderChart()}
-          </div>
-        </div>
+      <div
+        ref={chartRef}
+        className="min-h-[430px] flex-1 rounded-2xl border border-border bg-background p-4"
+      >
+        {renderChart()}
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -459,10 +460,13 @@ function ChartEmptyState({
   description: string;
 }) {
   return (
-    <div className="grid h-full place-items-center">
-      <div className="max-w-sm text-center">
-        <p className="text-sm font-semibold text-slate-900">{title}</p>
-        <p className="mt-2 text-sm leading-6 text-slate-500">{description}</p>
+    <div className="flex h-full min-h-[380px] items-center justify-center rounded-2xl border border-dashed border-border bg-muted/[0.12]">
+      <div className="max-w-md text-center">
+        <Info className="mx-auto size-8 text-muted-foreground" />
+        <h3 className="mt-3 text-sm font-bold text-foreground">{title}</h3>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          {description}
+        </p>
       </div>
     </div>
   );

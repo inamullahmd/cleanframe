@@ -1,5 +1,5 @@
-import { WorkbenchShell } from "@/components/workbench/shell/WorkbenchShell";
+import { redirect } from "next/navigation";
 
 export default function WorkbenchPage() {
-  return <WorkbenchShell />;
+  redirect("/");
 }

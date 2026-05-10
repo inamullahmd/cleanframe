@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
-import { Download, Info } from "lucide-react";
+import { Archive, Check, Download, Info } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useExportPackageStore } from "@/store/exportPackageStore";
 import type { DatasetRow } from "@/types/dataset";
 import type {
   Aggregation,
@@ -128,6 +129,24 @@ function useChartThemeTokens() {
   return tokens;
 }
 
+function getChartImageDataUrl({
+  chart,
+  backgroundColor,
+  pixelRatio = 2,
+}: {
+  chart: ReactEChartsRef["getEchartsInstance"] extends () => infer T
+    ? T
+    : never;
+  backgroundColor: string;
+  pixelRatio?: number;
+}) {
+  return chart.getDataURL({
+    type: "png",
+    pixelRatio,
+    backgroundColor,
+  });
+}
+
 function parseNumber(value: unknown): number | null {
   const normalized = String(value ?? "")
     .trim()
@@ -168,9 +187,7 @@ function aggregate(values: number[], aggregation: Aggregation) {
   }
 
   if (aggregation === "min") return Math.min(...values);
-
   if (aggregation === "max") return Math.max(...values);
-
   if (aggregation === "median") return median(values);
 
   return values.length;
@@ -323,7 +340,6 @@ function getLabelFormatter(displayOptions: ChartDisplayOptions): string {
 
 function getCartesianLabelFormatter(displayOptions: ChartDisplayOptions): string {
   if (displayOptions.labelMode === "name") return "{b}";
-
   return "{c}";
 }
 
@@ -433,7 +449,6 @@ function getDataZoomConfig(
 
 function getTooltipTrigger(chartType: ChartConfig["chartType"]) {
   if (chartType === "line" || chartType === "area") return "axis";
-
   return "item";
 }
 
@@ -940,6 +955,10 @@ export function ChartView({
 }: Props) {
   const chartInstanceRef = useRef<ReactEChartsRef | null>(null);
   const chartTheme = useChartThemeTokens();
+  const saveChartToPackage = useExportPackageStore(
+    (state) => state.saveChartToPackage,
+  );
+  const [savedFlash, setSavedFlash] = useState(false);
 
   const compatibilityMessage = getCompatibilityMessage({
     config,
@@ -969,21 +988,45 @@ export function ChartView({
     });
   }, [config, chartData, chartTheme]);
 
-  function downloadPng() {
+  function getCurrentChartDataUrl() {
     const chart = chartInstanceRef.current?.getEchartsInstance();
 
-    if (!chart || chartData.length === 0) return;
+    if (!chart || chartData.length === 0) return "";
 
-    const dataUrl = chart.getDataURL({
-      type: "png",
-      pixelRatio: 2,
+    return getChartImageDataUrl({
+      chart,
       backgroundColor: chartTheme.background,
+      pixelRatio: 2,
     });
+  }
+
+  function downloadPng() {
+    const dataUrl = getCurrentChartDataUrl();
+
+    if (!dataUrl) return;
 
     const link = document.createElement("a");
     link.download = `${config.title || "cleanframe-chart"}.png`;
     link.href = dataUrl;
     link.click();
+  }
+
+  function saveToPackage() {
+    const dataUrl = getCurrentChartDataUrl();
+
+    if (!dataUrl) return;
+
+    saveChartToPackage({
+      id: crypto.randomUUID(),
+      title: config.title || "Untitled chart",
+      chartType: config.chartType,
+      savedAt: new Date().toISOString(),
+      config: structuredClone(config),
+      imageDataUrl: dataUrl,
+    });
+
+    setSavedFlash(true);
+    window.setTimeout(() => setSavedFlash(false), 1400);
   }
 
   function renderChart() {
@@ -1031,16 +1074,33 @@ export function ChartView({
           </p>
         </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          onClick={downloadPng}
-          disabled={Boolean(compatibilityMessage) || chartData.length === 0}
-          className="h-8 rounded-xl px-3 !text-[13px]"
-        >
-          <Download className="mr-1.5 size-3.5" />
-          PNG
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={saveToPackage}
+            disabled={Boolean(compatibilityMessage) || chartData.length === 0}
+            className="h-8 rounded-xl px-3 !text-[13px]"
+          >
+            {savedFlash ? (
+              <Check className="mr-1.5 size-3.5" />
+            ) : (
+              <Archive className="mr-1.5 size-3.5" />
+            )}
+            {savedFlash ? "Saved" : "Save to package"}
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={downloadPng}
+            disabled={Boolean(compatibilityMessage) || chartData.length === 0}
+            className="h-8 rounded-xl px-3 !text-[13px]"
+          >
+            <Download className="mr-1.5 size-3.5" />
+            PNG
+          </Button>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 rounded-2xl bg-muted/[0.12] p-3">

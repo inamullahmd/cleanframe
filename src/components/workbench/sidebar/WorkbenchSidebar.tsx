@@ -9,21 +9,20 @@ import {
   GitBranch,
   Layers3,
   Settings,
-  Upload,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { UploadZone } from "@/components/workbench/upload/UploadZone";
 import {
   useWorkspaceStore,
   type WorkspacePanel,
 } from "@/store/workspaceStore";
+import { cn } from "@/lib/utils";
 
 type SidebarStep =
   | {
-      id: "upload" | "export";
+      id: "export";
       label: string;
       description: string;
       icon: ElementType;
@@ -39,58 +38,51 @@ type SidebarStep =
 
 const steps: SidebarStep[] = [
   {
-    id: "upload",
-    label: "Upload",
-    description: "Load a CSV file",
-    icon: Upload,
-    number: "01",
-  },
-  {
     id: "schema",
     label: "Schema",
     description: "Rename and type columns",
     icon: Layers3,
-    number: "02",
+    number: "01",
   },
   {
     id: "data",
     label: "Data",
     description: "Search, sort, inspect rows",
     icon: FileSpreadsheet,
-    number: "03",
+    number: "02",
   },
   {
     id: "clean",
     label: "Clean",
     description: "Fix missing values",
     icon: BrushCleaning,
-    number: "04",
+    number: "03",
   },
   {
     id: "history",
     label: "History",
     description: "Review and revert changes",
     icon: GitBranch,
-    number: "05",
+    number: "04",
   },
   {
     id: "charts",
     label: "Charts",
-    description: "Build and export visuals",
+    description: "Build and save visuals",
     icon: BarChart3,
-    number: "06",
+    number: "05",
   },
   {
     id: "export",
     label: "Export package",
-    description: "Export report assets",
+    description: "Download ZIP package",
     icon: Archive,
-    number: "07",
+    number: "06",
   },
 ];
 
 function isWorkspacePanel(id: SidebarStep["id"]): id is WorkspacePanel {
-  return id !== "upload" && id !== "export";
+  return id !== "export";
 }
 
 export function WorkbenchSidebar() {
@@ -99,128 +91,131 @@ export function WorkbenchSidebar() {
   const setActivePanel = useWorkspaceStore((state) => state.setActivePanel);
 
   return (
-    <aside className="flex h-full w-[260px] shrink-0 flex-col border-r border-border bg-background">
-      <div className="shrink-0 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-bold text-foreground">Workspace</h2>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Process CSV files temporarily in this browser session.
-            </p>
-          </div>
-
-          <Badge variant="secondary" className="shrink-0">
-            Local
-          </Badge>
-        </div>
-      </div>
-
-      <Separator />
-
-      <div className="shrink-0 p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <h3 className="text-xs font-bold text-foreground">Source</h3>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Upload a CSV file.
-            </p>
-          </div>
-        </div>
-
-        <UploadZone />
-
-        {workspace ? (
-          <div className="mt-3 rounded-2xl border border-border bg-muted/20 p-3">
-            <div className="flex items-start gap-2">
-              <FileSpreadsheet className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-              <div className="min-w-0">
-                <div className="truncate text-xs font-bold text-foreground">
-                  {workspace.file.name}
-                </div>
-                <div className="mt-1 text-[11px] text-muted-foreground">
-                  {workspace.profile.rowCount.toLocaleString()} rows ·{" "}
-                  {workspace.profile.columnCount.toLocaleString()} columns
-                </div>
-              </div>
+    <aside className="flex h-screen w-[280px] shrink-0 flex-col border-r border-border bg-background">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+        <div className="mb-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="!text-[13px] font-bold text-foreground">
+                Workspace
+              </h2>
+              <p className="mt-1 !text-[13px] leading-5 text-muted-foreground">
+                Process CSV files temporarily in this browser session.
+              </p>
             </div>
+
+            <Badge
+              variant="secondary"
+              className="shrink-0 rounded-lg !text-[11px]"
+            >
+              Local
+            </Badge>
           </div>
-        ) : null}
-      </div>
+        </div>
 
-      <Separator />
+        <div className="mb-4">
+          <p className="!text-[12px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+            Source
+          </p>
+          <p className="mt-1 !text-[13px] text-muted-foreground">
+            Upload a CSV file.
+          </p>
 
-      <div className="min-h-0 flex-1 overflow-auto p-3">
-        <div className="space-y-2">
+          <div className="mt-3 min-w-0">
+            <UploadZone />
+          </div>
+        </div>
+
+        <Separator className="my-3" />
+
+        <nav className="space-y-2">
           {steps.map((step) => {
             const Icon = step.icon;
-            const isUpload = step.id === "upload";
-            const isExport = step.id === "export";
-            const isEnabled = isUpload || Boolean(workspace);
+            const isEnabled = Boolean(workspace);
             const isActive = isWorkspacePanel(step.id)
               ? step.id === activePanel
-              : false;
+              : String(activePanel) === "export";
 
             return (
-              <Button
+              <button
                 key={step.id}
                 type="button"
-                variant="ghost"
-                disabled={!isEnabled || isExport}
+                disabled={!isEnabled}
                 onClick={() => {
                   if (isWorkspacePanel(step.id)) {
                     setActivePanel(step.id);
+                    return;
                   }
+
+                  setActivePanel("export" as WorkspacePanel);
                 }}
-                className={`group flex h-auto w-full items-center justify-start gap-3 rounded-2xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                className={cn(
+                  "group flex h-auto w-full items-center justify-start gap-3 rounded-2xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-45",
                   isActive
                     ? "border-primary/30 bg-primary/10 text-foreground"
-                    : "border-border/70 bg-background text-foreground hover:bg-muted/35"
-                }`}
+                    : "border-border/70 bg-background text-foreground hover:bg-muted/35",
+                )}
               >
-
-                <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-xl text-muted-foreground">
+                <span
+                  className={cn(
+                    "inline-flex size-8 shrink-0 items-center justify-center rounded-xl",
+                    isActive ? "bg-primary/10 text-primary" : "bg-muted/35",
+                  )}
+                >
                   <Icon className="size-4" />
                 </span>
 
-                <span className="min-w-0">
-                  <span className="block text-xs font-bold leading-4 text-foreground">
-                    {step.label}
+                <span className="min-w-0 flex-1">
+                  <span className="flex min-w-0 items-center justify-between gap-2">
+                    <span className="truncate !text-[13px] font-bold">
+                      {step.label}
+                    </span>
+                    <span className="shrink-0 !text-[11px] font-bold text-muted-foreground">
+                      {step.number}
+                    </span>
                   </span>
-                  <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
-                    {isExport ? "Coming soon" : step.description}
+
+                  <span className="mt-0.5 block truncate !text-[12px] leading-4 text-muted-foreground">
+                    {step.description}
                   </span>
                 </span>
-              </Button>
+              </button>
             );
           })}
-        </div>
+        </nav>
       </div>
 
       <div className="shrink-0 border-t border-border p-3">
-        <Button
+        <button
           type="button"
-          variant="ghost"
-          disabled={!workspace}
           onClick={() => setActivePanel("settings")}
-          className={`group flex h-auto w-full items-center justify-start gap-3 rounded-2xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${
+          className={cn(
+            "group flex h-auto w-full items-center justify-start gap-3 rounded-2xl border px-3 py-3 text-left transition",
             activePanel === "settings"
               ? "border-primary/30 bg-primary/10 text-foreground"
-              : "border-border/70 bg-background text-foreground hover:bg-muted/35"
-          }`}
+              : "border-border/70 bg-background text-foreground hover:bg-muted/35",
+          )}
         >
-          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-xl text-muted-foreground">
+          <span
+            className={cn(
+              "inline-flex size-8 shrink-0 items-center justify-center rounded-xl",
+              activePanel === "settings"
+                ? "bg-primary/10 text-primary"
+                : "bg-muted/35",
+            )}
+          >
             <Settings className="size-4" />
           </span>
 
-          <span className="min-w-0">
-            <span className="block text-xs font-bold leading-4 text-foreground">
+          <span className="min-w-0 flex-1">
+            <span className="block truncate !text-[13px] font-bold">
               Settings
             </span>
-            <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
+            <span className="mt-0.5 block truncate !text-[12px] leading-4 text-muted-foreground">
               Workspace preferences
             </span>
           </span>
-        </Button>
+        </button>
       </div>
     </aside>
   );

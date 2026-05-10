@@ -23,7 +23,8 @@ export type WorkspacePanel =
   | "data"
   | "clean"
   | "history"
-  | "charts";
+  | "charts"
+  | "settings";
 
 export type ColumnNameTransform =
   | "title_case_spaces"

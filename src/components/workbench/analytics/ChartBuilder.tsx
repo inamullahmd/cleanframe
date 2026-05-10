@@ -257,18 +257,16 @@ function getDynamicChartTitle(config: ChartConfig): string {
   }
 
   if (config.chartType === "scatter") {
-    return `${config.yColumn || "Y Column"} vs ${
-      config.xColumn || "X Column"
-    }`;
+    return `${config.yColumn || "Y Column"} vs ${config.xColumn || "X Column"
+      }`;
   }
 
   if (config.aggregation === "count") {
     return `Count by ${config.xColumn || "Category"}`;
   }
 
-  return `${formatAggregationLabel(config.aggregation)} of ${
-    config.yColumn || "Value"
-  } by ${config.xColumn || "Category"}`;
+  return `${formatAggregationLabel(config.aggregation)} of ${config.yColumn || "Value"
+    } by ${config.xColumn || "Category"}`;
 }
 
 function isGroupedChart(chartType: ChartType) {
@@ -444,16 +442,14 @@ function CheckboxRow({
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-start gap-2 rounded-xl px-2.5 py-2 text-left transition ${
-        checked ? "bg-primary/10" : "hover:bg-muted"
-      }`}
+      className={`flex w-full items-start gap-2 rounded-xl px-2.5 py-2 text-left transition ${checked ? "bg-primary/10" : "hover:bg-muted"
+        }`}
     >
       <span
-        className={`mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded border ${
-          checked
+        className={`mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded border ${checked
             ? "border-primary bg-primary text-primary-foreground"
             : "border-border bg-background"
-        }`}
+          }`}
       >
         {checked ? <Check className="size-3" /> : null}
       </span>
@@ -485,18 +481,16 @@ function OptionToggle({
     <button
       type="button"
       onClick={() => onChange(!checked)}
-      className={`inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-xl border px-3 text-xs font-semibold leading-none shadow-sm transition ${
-        checked
+      className={`inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-xl border px-3 text-xs font-semibold leading-none shadow-sm transition ${checked
           ? "border-primary/30 bg-primary/10 text-foreground"
           : "border-border/70 bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
-      }`}
+        }`}
     >
       <span
-        className={`inline-flex size-4 shrink-0 items-center justify-center rounded border ${
-          checked
+        className={`inline-flex size-4 shrink-0 items-center justify-center rounded border ${checked
             ? "border-primary bg-primary text-primary-foreground"
             : "border-border bg-background"
-        }`}
+          }`}
       >
         {checked ? <Check className="size-3" /> : null}
       </span>
@@ -612,9 +606,8 @@ function ColumnPoolDropdown({
           {formatColumnFilterLabel(value)}
         </span>
         <ChevronDown
-          className={`size-3.5 text-muted-foreground transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
+          className={`size-3.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""
+            }`}
         />
       </button>
 
@@ -694,9 +687,8 @@ function DisplayOptionsDropdown({
         <Settings2 className="size-3.5 text-muted-foreground" />
         <span className="text-xs text-muted-foreground">Display options</span>
         <ChevronDown
-          className={`size-3.5 text-muted-foreground transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
+          className={`size-3.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""
+            }`}
         />
       </button>
 
@@ -708,6 +700,14 @@ function DisplayOptionsDropdown({
           <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
             Options below change based on the selected chart type.
           </div>
+
+          <button
+            type="button"
+            onClick={() => updateDisplayOptions(DEFAULT_DISPLAY_OPTIONS)}
+            className="mt-3 h-8 rounded-xl border border-border/70 bg-background px-3 text-xs font-semibold text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
+          >
+            Reset display options
+          </button>
 
           <div className="mt-3 flex flex-wrap gap-2">
             {isCartesian ? (

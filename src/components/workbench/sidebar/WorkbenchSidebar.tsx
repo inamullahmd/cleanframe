@@ -2,13 +2,16 @@
 
 import type { ElementType } from "react";
 import {
+  Archive,
   BarChart3,
   BrushCleaning,
   FileSpreadsheet,
   GitBranch,
   Layers3,
+  Settings,
   Upload,
 } from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -20,7 +23,7 @@ import {
 
 type SidebarStep =
   | {
-      id: "upload";
+      id: "upload" | "export";
       label: string;
       description: string;
       icon: ElementType;
@@ -77,10 +80,17 @@ const steps: SidebarStep[] = [
     icon: BarChart3,
     number: "06",
   },
+  {
+    id: "export",
+    label: "Export package",
+    description: "Export report assets",
+    icon: Archive,
+    number: "07",
+  },
 ];
 
 function isWorkspacePanel(id: SidebarStep["id"]): id is WorkspacePanel {
-  return id !== "upload";
+  return id !== "upload" && id !== "export";
 }
 
 export function WorkbenchSidebar() {
@@ -89,99 +99,128 @@ export function WorkbenchSidebar() {
   const setActivePanel = useWorkspaceStore((state) => state.setActivePanel);
 
   return (
-    <aside className="hidden w-80 shrink-0 border-r bg-background lg:block">
-      <div className="flex h-full flex-col">
-        <div className="border-b p-5">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">
-              Workspace
-            </h2>
-
-            <Badge variant="secondary">Local</Badge>
+    <aside className="flex h-full w-[260px] shrink-0 flex-col border-r border-border bg-background">
+      <div className="shrink-0 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Workspace</h2>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Process CSV files temporarily in this browser session.
+            </p>
           </div>
 
-          <p className="mt-2 text-xs leading-5 text-muted-foreground">
-            Process CSV files temporarily in this browser session.
-          </p>
+          <Badge variant="secondary" className="shrink-0">
+            Local
+          </Badge>
+        </div>
+      </div>
+
+      <Separator />
+
+      <div className="shrink-0 p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <h3 className="text-xs font-bold text-foreground">Source</h3>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Upload a CSV file.
+            </p>
+          </div>
         </div>
 
         <UploadZone />
 
-        <nav className="space-y-1.5 p-3">
+        {workspace ? (
+          <div className="mt-3 rounded-2xl border border-border bg-muted/20 p-3">
+            <div className="flex items-start gap-2">
+              <FileSpreadsheet className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0">
+                <div className="truncate text-xs font-bold text-foreground">
+                  {workspace.file.name}
+                </div>
+                <div className="mt-1 text-[11px] text-muted-foreground">
+                  {workspace.profile.rowCount.toLocaleString()} rows ·{" "}
+                  {workspace.profile.columnCount.toLocaleString()} columns
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <Separator />
+
+      <div className="min-h-0 flex-1 overflow-auto p-3">
+        <div className="space-y-2">
           {steps.map((step) => {
             const Icon = step.icon;
             const isUpload = step.id === "upload";
+            const isExport = step.id === "export";
             const isEnabled = isUpload || Boolean(workspace);
             const isActive = isWorkspacePanel(step.id)
               ? step.id === activePanel
               : false;
 
             return (
-              <button
-                key={step.label}
+              <Button
+                key={step.id}
                 type="button"
-                disabled={!isEnabled || isUpload}
+                variant="ghost"
+                disabled={!isEnabled || isExport}
                 onClick={() => {
                   if (isWorkspacePanel(step.id)) {
                     setActivePanel(step.id);
                   }
                 }}
-                className={`group flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                className={`group flex h-auto w-full items-center justify-start gap-3 rounded-2xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${
                   isActive
                     ? "border-primary/30 bg-primary/10 text-foreground"
-                    : "border-transparent bg-transparent text-foreground hover:border-border hover:bg-muted/35"
+                    : "border-border/70 bg-background text-foreground hover:bg-muted/35"
                 }`}
               >
-                <span
-                  className={`flex size-9 shrink-0 items-center justify-center rounded-xl border text-[11px] font-semibold ${
-                    isActive
-                      ? "border-primary/30 bg-background text-primary"
-                      : "bg-muted/30 text-muted-foreground"
-                  }`}
-                >
-                  {step.number}
+
+                <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-xl text-muted-foreground">
+                  <Icon className="size-4" />
                 </span>
 
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2">
-                    <Icon
-                      className={`size-4 shrink-0 ${
-                        isActive ? "text-primary" : "text-muted-foreground"
-                      }`}
-                    />
-
-                    <span className="text-sm font-semibold text-foreground">
-                      {step.label}
-                    </span>
+                <span className="min-w-0">
+                  <span className="block text-xs font-bold leading-4 text-foreground">
+                    {step.label}
                   </span>
-
-                  <span className="mt-0.5 block truncate text-xs leading-5 text-muted-foreground">
-                    {step.description}
+                  <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
+                    {isExport ? "Coming soon" : step.description}
                   </span>
                 </span>
-              </button>
+              </Button>
             );
           })}
-        </nav>
-
-        <Separator />
-
-        <div className="mt-auto border-t p-4">
-          <div className="rounded-2xl border bg-muted/25 p-4">
-            <h3 className="text-sm font-semibold text-foreground">
-              Export package
-            </h3>
-
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Report export will include schema, data quality, cleaning history,
-              and chart outputs.
-            </p>
-
-            <Button className="mt-3 w-full" disabled>
-              Coming soon
-            </Button>
-          </div>
         </div>
+      </div>
+
+      <div className="shrink-0 border-t border-border p-3">
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={!workspace}
+          onClick={() => setActivePanel("settings")}
+          className={`group flex h-auto w-full items-center justify-start gap-3 rounded-2xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${
+            activePanel === "settings"
+              ? "border-primary/30 bg-primary/10 text-foreground"
+              : "border-border/70 bg-background text-foreground hover:bg-muted/35"
+          }`}
+        >
+          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-xl text-muted-foreground">
+            <Settings className="size-4" />
+          </span>
+
+          <span className="min-w-0">
+            <span className="block text-xs font-bold leading-4 text-foreground">
+              Settings
+            </span>
+            <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
+              Workspace preferences
+            </span>
+          </span>
+        </Button>
       </div>
     </aside>
   );

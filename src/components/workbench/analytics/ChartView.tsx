@@ -3,8 +3,6 @@
 import { useMemo, useRef } from "react";
 import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
-import * as htmlToImage from "html-to-image";
-import { jsPDF } from "jspdf";
 import { Download, Info } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -28,6 +26,8 @@ type ChartDatum = {
   x?: number;
   y?: number;
 };
+
+type ReactEChartsRef = InstanceType<typeof ReactECharts>;
 
 const COLORS = [
   "#0f766e",
@@ -592,7 +592,8 @@ export function ChartView({
   numericColumns,
   groupableColumns,
 }: Props) {
-  const chartRef = useRef<HTMLDivElement | null>(null);
+  const chartWrapperRef = useRef<HTMLDivElement | null>(null);
+  const chartInstanceRef = useRef<ReactEChartsRef | null>(null);
 
   const compatibilityMessage = getCompatibilityMessage({
     config,
@@ -621,34 +622,20 @@ export function ChartView({
     });
   }, [config, chartData]);
 
-  async function downloadPng() {
-    if (!chartRef.current || chartData.length === 0) return;
+  function downloadPng() {
+    const chart = chartInstanceRef.current?.getEchartsInstance();
+    if (!chart || chartData.length === 0) return;
 
-    const dataUrl = await htmlToImage.toPng(chartRef.current, {
+    const dataUrl = chart.getDataURL({
+      type: "png",
       pixelRatio: 2,
-      backgroundColor: "white",
+      backgroundColor: "#ffffff",
     });
 
     const link = document.createElement("a");
     link.download = `${config.title || "cleanframe-chart"}.png`;
     link.href = dataUrl;
     link.click();
-  }
-
-  async function downloadPdf() {
-    if (!chartRef.current || chartData.length === 0) return;
-
-    const dataUrl = await htmlToImage.toPng(chartRef.current, {
-      pixelRatio: 2,
-      backgroundColor: "white",
-    });
-
-    const pdf = new jsPDF("landscape", "pt", "a4");
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-
-    pdf.addImage(dataUrl, "PNG", 32, 32, pageWidth - 64, pageHeight - 64);
-    pdf.save(`${config.title || "cleanframe-chart"}.pdf`);
   }
 
   function renderChart() {
@@ -672,6 +659,7 @@ export function ChartView({
 
     return (
       <ReactECharts
+        ref={chartInstanceRef}
         option={chartOption}
         notMerge
         lazyUpdate
@@ -708,22 +696,11 @@ export function ChartView({
             <Download className="mr-1.5 size-3.5" />
             PNG
           </Button>
-
-          <Button
-            type="button"
-            variant="outline"
-            className="h-8 rounded-xl px-3 text-xs"
-            disabled={chartData.length === 0}
-            onClick={downloadPdf}
-          >
-            <Download className="mr-1.5 size-3.5" />
-            PDF
-          </Button>
         </div>
       </div>
 
       <div
-        ref={chartRef}
+        ref={chartWrapperRef}
         className="min-h-[430px] flex-1 rounded-2xl border border-border bg-background p-4"
       >
         {renderChart()}

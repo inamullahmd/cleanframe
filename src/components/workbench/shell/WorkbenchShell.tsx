@@ -8,6 +8,7 @@ import { WorkbenchHeader } from "@/components/workbench/header/WorkbenchHeader";
 import { HistoryPanel } from "@/components/workbench/history/HistoryPanel";
 import { EmptyWorkspace } from "@/components/workbench/profiling/EmptyWorkspace";
 import { SchemaEditor } from "@/components/workbench/schema/SchemaEditor";
+import { SettingsPanel } from "@/components/workbench/settings/SettingsPanel";
 import { WorkbenchSidebar } from "@/components/workbench/sidebar/WorkbenchSidebar";
 import { DataGrid } from "@/components/workbench/table/DataGrid";
 import { useWorkspaceStore } from "@/store/workspaceStore";
@@ -31,24 +32,22 @@ export function WorkbenchShell() {
     if (activePanel === "clean") return <CleanPanel />;
     if (activePanel === "history") return <HistoryPanel />;
     if (activePanel === "charts") return <ChartBuilder />;
+    if (activePanel === "settings") return <SettingsPanel />;
 
     return <SchemaEditor />;
   }
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <WorkbenchSidebar />
 
-      <main className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <WorkbenchHeader />
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-
-          <div className="min-h-0 flex-1 overflow-hidden p-3">
-            {renderPanel()}
-          </div>
-        </div>
-      </main>
+        <main className="min-h-0 flex-1 overflow-hidden p-3">
+          {renderPanel()}
+        </main>
+      </div>
     </div>
   );
 }

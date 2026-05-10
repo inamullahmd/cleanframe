@@ -2,6 +2,7 @@
 
 import type { InputHTMLAttributes, ReactNode } from "react";
 import { useId } from "react";
+
 import { cn } from "@/lib/utils";
 
 type InputWithLabelProps = InputHTMLAttributes<HTMLInputElement> & {
@@ -29,11 +30,11 @@ export function InputWithLabel({
   const inputId = id ?? generatedId;
 
   return (
-    <div className={cn("min-w-0 space-y-1.5", wrapperClassName)}>
+    <div className={cn("min-w-0 space-y-1.5 !text-[13px]", wrapperClassName)}>
       <label
         htmlFor={inputId}
         className={cn(
-          "block text-sm font-medium text-foreground",
+          "block !text-[13px] font-semibold leading-5 text-foreground",
           hideLabel && "sr-only",
         )}
       >
@@ -51,7 +52,7 @@ export function InputWithLabel({
           id={inputId}
           aria-invalid={Boolean(error)}
           className={cn(
-            "h-11 w-full rounded-2xl border border-border/70 bg-muted/35 px-4 text-sm text-foreground shadow-sm outline-none transition",
+            "h-10 w-full rounded-2xl border border-border/70 bg-muted/35 px-3 !text-[13px] leading-5 text-foreground shadow-sm outline-none transition",
             "placeholder:text-muted-foreground/70",
             "hover:border-border",
             "focus:border-primary focus:bg-background focus:ring-2 focus:ring-primary/15",
@@ -66,10 +67,14 @@ export function InputWithLabel({
       </div>
 
       {helpText && !error && (
-        <p className="text-xs leading-5 text-muted-foreground">{helpText}</p>
+        <p className="!text-[13px] leading-5 text-muted-foreground">
+          {helpText}
+        </p>
       )}
 
-      {error && <p className="text-xs leading-5 text-destructive">{error}</p>}
+      {error && (
+        <p className="!text-[13px] leading-5 text-destructive">{error}</p>
+      )}
     </div>
   );
 }

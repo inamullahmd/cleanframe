@@ -11,6 +11,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown } from "lucide-react";
+
 import { cn } from "@/lib/utils";
 
 export type CheckSelectOption<T extends string> = {
@@ -64,7 +65,6 @@ export function CheckSelect<T extends string>({
   triggerClassName,
 }: CheckSelectProps<T>) {
   const id = useId();
-
   const rootRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -90,7 +90,6 @@ export function CheckSelect<T extends string>({
 
   function updatePosition() {
     const trigger = triggerRef.current;
-
     if (!trigger) return;
 
     const container = getPortalContainer(trigger);
@@ -98,13 +97,14 @@ export function CheckSelect<T extends string>({
 
     setPortalContainer(container);
 
+    const dropdownWidth = Math.max(triggerRect.width, 280);
+
     if (container === document.body) {
       setPosition({
         top: triggerRect.bottom + 6,
         left: triggerRect.left,
-        width: triggerRect.width,
+        width: dropdownWidth,
       });
-
       return;
     }
 
@@ -113,7 +113,7 @@ export function CheckSelect<T extends string>({
     setPosition({
       top: triggerRect.bottom - containerRect.top + 6,
       left: triggerRect.left - containerRect.left,
-      width: triggerRect.width,
+      width: dropdownWidth,
     });
   }
 
@@ -169,12 +169,15 @@ export function CheckSelect<T extends string>({
     portalContainer !== null && portalContainer !== document.body;
 
   return (
-    <div ref={rootRef} className={cn("min-w-0 space-y-1.5", className)}>
+    <div
+      ref={rootRef}
+      className={cn("min-w-0 space-y-1.5 !text-[13px]", className)}
+    >
       {label && (
         <label
           htmlFor={id}
           className={cn(
-            "block text-sm font-medium text-foreground",
+            "block !text-[13px] font-semibold leading-5 text-foreground",
             hideLabel && "sr-only",
           )}
         >
@@ -193,7 +196,7 @@ export function CheckSelect<T extends string>({
           if (!disabled) setOpen((current) => !current);
         }}
         className={cn(
-          "flex h-11 w-full items-center justify-between gap-3 rounded-2xl border border-border/70 bg-muted/35 px-4 text-left text-sm text-foreground shadow-sm outline-none transition",
+          "flex min-h-9 w-full items-start justify-between gap-3 rounded-xl border border-border/70 bg-muted/35 px-3 py-2 text-left !text-[13px] font-medium leading-5 text-foreground shadow-sm outline-none transition",
           "hover:border-border",
           "focus:border-primary focus:bg-background focus:ring-2 focus:ring-primary/15",
           "disabled:cursor-not-allowed disabled:opacity-50",
@@ -204,7 +207,7 @@ export function CheckSelect<T extends string>({
       >
         <span
           className={cn(
-            "min-w-0 truncate",
+            "min-w-0 whitespace-normal break-words !text-[13px] leading-5",
             !selectedOption && "text-muted-foreground",
           )}
         >
@@ -213,17 +216,21 @@ export function CheckSelect<T extends string>({
 
         <ChevronDown
           className={cn(
-            "size-4 shrink-0 text-muted-foreground transition",
+            "mt-0.5 size-4 shrink-0 text-muted-foreground transition",
             open && "rotate-180",
           )}
         />
       </button>
 
       {helpText && !error && (
-        <p className="text-xs leading-5 text-muted-foreground">{helpText}</p>
+        <p className="!text-[13px] leading-5 text-muted-foreground">
+          {helpText}
+        </p>
       )}
 
-      {error && <p className="text-xs leading-5 text-destructive">{error}</p>}
+      {error && (
+        <p className="!text-[13px] leading-5 text-destructive">{error}</p>
+      )}
 
       {mounted &&
         open &&
@@ -236,7 +243,7 @@ export function CheckSelect<T extends string>({
             onWheel={(event) => event.stopPropagation()}
             onTouchMove={(event) => event.stopPropagation()}
             className={cn(
-              "z-[100] max-h-72 overflow-y-auto overflow-x-hidden rounded-2xl border bg-popover p-1.5 text-popover-foreground shadow-xl",
+              "z-[100] max-h-72 overflow-y-auto overflow-x-hidden rounded-2xl border bg-popover p-1.5 !text-[13px] text-popover-foreground shadow-xl",
               isInsideDialog ? "absolute" : "fixed",
             )}
           >
@@ -259,7 +266,7 @@ export function CheckSelect<T extends string>({
                     triggerRef.current?.focus();
                   }}
                   className={cn(
-                    "grid w-full grid-cols-[18px_minmax(0,1fr)] gap-3 rounded-xl px-3 py-2.5 text-left text-sm outline-none transition",
+                    "grid w-full grid-cols-[18px_minmax(0,1fr)] gap-3 rounded-xl px-3 py-2 text-left !text-[13px] outline-none transition",
                     hasDescription ? "items-start" : "items-center",
                     "hover:bg-muted focus:bg-muted",
                     selected && "bg-muted/70",
@@ -283,12 +290,12 @@ export function CheckSelect<T extends string>({
                   </span>
 
                   <span className="min-w-0">
-                    <span className="block truncate font-medium text-foreground">
+                    <span className="block whitespace-normal break-words !text-[13px] font-medium leading-5 text-foreground">
                       {option.label}
                     </span>
 
                     {option.description && (
-                      <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                      <span className="mt-0.5 block whitespace-normal break-words !text-[13px] leading-5 text-muted-foreground">
                         {option.description}
                       </span>
                     )}

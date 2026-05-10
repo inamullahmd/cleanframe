@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/check-select";
 import { InputWithLabel } from "@/components/ui/input-with-label";
 import { ChartView } from "@/components/workbench/analytics/ChartView";
+import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/store/workspaceStore";
 import type { ColumnType } from "@/types/dataset";
 import type { DatasetProfile } from "@/types/profile";
@@ -63,23 +64,18 @@ export type ChartDisplayOptions = {
   showLabels: boolean;
   enableAnimation: boolean;
   showDataZoom: boolean;
-
   legendPosition: ChartLegendPosition;
   labelMode: ChartLabelMode;
-
   axisLabelRotation: number;
   axisFontSize: number;
   truncateAxisLabels: boolean;
   chartPadding: number;
-
   smoothLines: boolean;
   lineWidth: number;
   pointSize: number;
   areaOpacity: number;
-
   barWidth: number;
   barRadius: number;
-
   pieInnerRadius: number;
   pieOuterRadius: number;
   pieMinAngle: number;
@@ -143,23 +139,18 @@ const DEFAULT_DISPLAY_OPTIONS: ChartDisplayOptions = {
   showLabels: true,
   enableAnimation: true,
   showDataZoom: false,
-
   legendPosition: "bottom",
   labelMode: "value",
-
   axisLabelRotation: 0,
   axisFontSize: 11,
   truncateAxisLabels: true,
   chartPadding: 24,
-
   smoothLines: true,
   lineWidth: 3,
   pointSize: 14,
   areaOpacity: 0.18,
-
   barWidth: 72,
   barRadius: 8,
-
   pieInnerRadius: 38,
   pieOuterRadius: 68,
   pieMinAngle: 3,
@@ -257,16 +248,18 @@ function getDynamicChartTitle(config: ChartConfig): string {
   }
 
   if (config.chartType === "scatter") {
-    return `${config.yColumn || "Y Column"} vs ${config.xColumn || "X Column"
-      }`;
+    return `${config.yColumn || "Y Column"} vs ${
+      config.xColumn || "X Column"
+    }`;
   }
 
   if (config.aggregation === "count") {
     return `Count by ${config.xColumn || "Category"}`;
   }
 
-  return `${formatAggregationLabel(config.aggregation)} of ${config.yColumn || "Value"
-    } by ${config.xColumn || "Category"}`;
+  return `${formatAggregationLabel(config.aggregation)} of ${
+    config.yColumn || "Value"
+  } by ${config.xColumn || "Category"}`;
 }
 
 function isGroupedChart(chartType: ChartType) {
@@ -296,7 +289,7 @@ function getChartDescription(config: ChartConfig) {
   return "Aggregate a numeric column by a selected group column.";
 }
 
-function toOptions(values: string[]): CheckSelectOption<string>[] {
+function toOptions<T extends string>(values: T[]): CheckSelectOption<T>[] {
   return values.map((value) => ({
     value,
     label: value,
@@ -311,6 +304,7 @@ function getQualityLabel(score: number): string {
   if (score >= 90) return "Excellent";
   if (score >= 75) return "Good";
   if (score >= 60) return "Review";
+
   return "Risk";
 }
 
@@ -337,14 +331,14 @@ function MetricChip({
         : "text-foreground";
 
   return (
-    <div className="inline-flex h-9 items-center gap-2 rounded-2xl border border-border/70 bg-background px-3 shadow-sm">
-      <span className="inline-flex size-5 items-center justify-center rounded-full border border-border/70 bg-muted/50 text-muted-foreground">
-        <Icon className="size-3.5" />
-      </span>
-      <span className="text-[11px] font-medium text-muted-foreground">
+    <div className="inline-flex h-8 items-center gap-2 rounded-2xl bg-muted/35 px-3">
+      <Icon className="size-3.5 text-muted-foreground" />
+      <span className="!text-[12px] font-medium text-muted-foreground">
         {label}
       </span>
-      <span className={`text-sm font-bold ${valueClassName}`}>{value}</span>
+      <span className={cn("!text-[13px] font-bold", valueClassName)}>
+        {value}
+      </span>
     </div>
   );
 }
@@ -393,18 +387,18 @@ function HeaderMetrics({
         value={formatCount(profile.parseErrors.length)}
         intent={profile.parseErrors.length > 0 ? "danger" : "default"}
       />
-
-      <div className="inline-flex h-9 items-center gap-2 rounded-2xl border border-border/70 bg-background px-3 shadow-sm">
-        <span className="inline-flex size-5 items-center justify-center rounded-full border border-border/70 bg-muted/50 text-muted-foreground">
-          <Gauge className="size-3.5" />
-        </span>
-        <span className="text-[11px] font-medium text-muted-foreground">
+      <div className="inline-flex h-8 items-center gap-2 rounded-2xl bg-muted/35 px-3">
+        <Gauge className="size-3.5 text-muted-foreground" />
+        <span className="!text-[12px] font-medium text-muted-foreground">
           Quality
         </span>
-        <span className="text-sm font-bold text-foreground">
+        <span className="!text-[13px] font-bold text-foreground">
           {profile.qualityScore}/100
         </span>
-        <Badge variant={getQualityBadgeVariant(profile.qualityScore)}>
+        <Badge
+          variant={getQualityBadgeVariant(profile.qualityScore)}
+          className="h-5 rounded-lg px-1.5 !text-[11px]"
+        >
           {getQualityLabel(profile.qualityScore)}
         </Badge>
       </div>
@@ -420,9 +414,8 @@ function ToolChip({
   value: string | number;
 }) {
   return (
-    <span className="inline-flex h-8 items-center rounded-2xl border border-border/70 bg-background px-3 text-xs text-muted-foreground shadow-sm">
-      {label}:{" "}
-      <span className="ml-1 font-semibold text-foreground">{value}</span>
+    <span className="inline-flex h-8 items-center rounded-2xl bg-muted/35 px-3 !text-[13px] text-muted-foreground">
+      {label}: <span className="ml-1 font-bold text-foreground">{value}</span>
     </span>
   );
 }
@@ -442,24 +435,29 @@ function CheckboxRow({
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-start gap-2 rounded-xl px-2.5 py-2 text-left transition ${checked ? "bg-primary/10" : "hover:bg-muted"
-        }`}
+      className={cn(
+        "flex w-full items-start gap-2 rounded-xl px-2.5 py-2 text-left transition",
+        checked ? "bg-primary/10" : "hover:bg-muted/70",
+      )}
     >
       <span
-        className={`mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded border ${checked
+        className={cn(
+          "mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded border",
+          checked
             ? "border-primary bg-primary text-primary-foreground"
-            : "border-border bg-background"
-          }`}
+            : "border-border bg-background",
+        )}
       >
         {checked ? <Check className="size-3" /> : null}
       </span>
 
       <span className="min-w-0">
-        <span className="block truncate text-xs font-semibold text-foreground">
+        <span className="block truncate !text-[13px] font-semibold text-foreground">
           {label}
         </span>
+
         {description ? (
-          <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
+          <span className="mt-0.5 block !text-[12px] leading-4 text-muted-foreground">
             {description}
           </span>
         ) : null}
@@ -481,20 +479,24 @@ function OptionToggle({
     <button
       type="button"
       onClick={() => onChange(!checked)}
-      className={`inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-xl border px-3 text-xs font-semibold leading-none shadow-sm transition ${checked
-          ? "border-primary/30 bg-primary/10 text-foreground"
-          : "border-border/70 bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
-        }`}
+      className={cn(
+        "inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-xl px-3 !text-[13px] font-semibold leading-none transition",
+        checked
+          ? "bg-primary/10 text-foreground"
+          : "bg-muted/35 text-muted-foreground hover:bg-muted hover:text-foreground",
+      )}
     >
       <span
-        className={`inline-flex size-4 shrink-0 items-center justify-center rounded border ${checked
+        className={cn(
+          "inline-flex size-4 shrink-0 items-center justify-center rounded border",
+          checked
             ? "border-primary bg-primary text-primary-foreground"
-            : "border-border bg-background"
-          }`}
+            : "border-border bg-background",
+        )}
       >
         {checked ? <Check className="size-3" /> : null}
       </span>
-      <span className="text-xs font-semibold leading-none">{label}</span>
+      <span>{label}</span>
     </button>
   );
 }
@@ -515,8 +517,8 @@ function NumberOption({
   onChange: (value: number) => void;
 }) {
   return (
-    <label className="block">
-      <span className="text-[11px] font-semibold text-muted-foreground">
+    <label className="block min-w-0">
+      <span className="!text-[12px] font-semibold text-muted-foreground">
         {label}
       </span>
       <input
@@ -526,13 +528,13 @@ function NumberOption({
         max={max}
         step={step}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="mt-1 h-9 w-full rounded-xl border border-border bg-background px-3 !text-xs !font-semibold leading-none text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
+        className="mt-1 h-9 w-full rounded-xl border border-border bg-background px-3 !text-[13px] !font-semibold leading-none text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
       />
     </label>
   );
 }
 
-function SelectOption<T extends string>({
+function NativeSelectOption<T extends string>({
   label,
   value,
   options,
@@ -544,21 +546,17 @@ function SelectOption<T extends string>({
   onChange: (value: T) => void;
 }) {
   return (
-    <label className="block">
-      <span className="text-[11px] font-semibold text-muted-foreground">
+    <label className="block min-w-0">
+      <span className="!text-[12px] font-semibold text-muted-foreground">
         {label}
       </span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value as T)}
-        className="mt-1 h-9 w-full rounded-xl border border-border bg-background px-3 !text-xs !font-semibold leading-none text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
+        className="mt-1 h-9 w-full rounded-xl border border-border bg-background px-3 !text-[13px] !font-semibold leading-none text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
       >
         {options.map((option) => (
-          <option
-            key={option.value}
-            value={option.value}
-            className="text-xs font-semibold"
-          >
+          <option key={option.value} value={option.value}>
             {option.label}
           </option>
         ))}
@@ -580,6 +578,7 @@ function ColumnPoolDropdown({
   useEffect(() => {
     function handleDocumentClick(event: MouseEvent) {
       if (!dropdownRef.current) return;
+
       if (!dropdownRef.current.contains(event.target as Node)) {
         setOpen(false);
       }
@@ -599,34 +598,36 @@ function ColumnPoolDropdown({
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="inline-flex h-8 items-center gap-2 rounded-2xl border border-border/70 bg-background px-3 text-xs text-muted-foreground shadow-sm transition hover:bg-muted/50"
+        className="inline-flex h-8 items-center gap-2 rounded-2xl bg-muted/35 px-3 !text-[13px] text-muted-foreground transition hover:bg-muted/70"
       >
-        <span>Column pool:</span>
-        <span className="text-xs font-semibold text-foreground">
-          {formatColumnFilterLabel(value)}
+        <span>
+          Column pool:{" "}
+          <span className="font-bold text-foreground">
+            {formatColumnFilterLabel(value)}
+          </span>
         </span>
         <ChevronDown
-          className={`size-3.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""
-            }`}
+          className={cn(
+            "size-3.5 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
         />
       </button>
 
       {open ? (
-        <div className="absolute left-0 top-full z-50 mt-2 w-[280px] rounded-2xl border border-border bg-background p-2 shadow-xl">
-          <div className="px-2 py-1.5">
-            <div className="text-xs font-bold text-foreground">
-              Column filter
-            </div>
-            <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
-              Controls which columns appear in chart selectors.
-            </div>
+        <div className="absolute left-0 top-full z-50 mt-2 w-[340px] rounded-2xl border border-border bg-background p-3 shadow-xl">
+          <div className="!text-[13px] font-bold text-foreground">
+            Column filter
+          </div>
+          <div className="mt-0.5 !text-[12px] leading-4 text-muted-foreground">
+            Controls which columns appear in chart selectors.
           </div>
 
-          <div className="mt-1 max-h-[280px] space-y-1 overflow-auto">
+          <div className="mt-3 space-y-1">
             {COLUMN_FILTER_OPTIONS.map((option) => (
               <CheckboxRow
                 key={option.value}
-                checked={value === option.value}
+                checked={option.value === value}
                 label={option.label}
                 description={option.description}
                 onClick={() => {
@@ -663,6 +664,7 @@ function DisplayOptionsDropdown({
   useEffect(() => {
     function handleDocumentClick(event: MouseEvent) {
       if (!dropdownRef.current) return;
+
       if (!dropdownRef.current.contains(event.target as Node)) {
         setOpen(false);
       }
@@ -682,29 +684,31 @@ function DisplayOptionsDropdown({
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="inline-flex h-8 items-center gap-2 rounded-2xl border border-border/70 bg-background px-3 text-xs text-muted-foreground shadow-sm transition hover:bg-muted/50"
+        className="inline-flex h-8 items-center gap-2 rounded-2xl bg-muted/35 px-3 !text-[13px] text-muted-foreground transition hover:bg-muted/70"
       >
         <Settings2 className="size-3.5 text-muted-foreground" />
-        <span className="text-xs text-muted-foreground">Display options</span>
+        <span>Display options</span>
         <ChevronDown
-          className={`size-3.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""
-            }`}
+          className={cn(
+            "size-3.5 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
         />
       </button>
 
       {open ? (
-        <div className="absolute left-0 top-full z-50 mt-2 w-[360px] rounded-2xl border border-border bg-background p-3 shadow-xl">
-          <div className="text-xs font-bold text-foreground">
+        <div className="absolute left-0 top-full z-50 mt-2 w-[380px] rounded-2xl border border-border bg-background p-3 shadow-xl">
+          <div className="!text-[13px] font-bold text-foreground">
             Display options
           </div>
-          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+          <div className="mt-0.5 !text-[12px] leading-4 text-muted-foreground">
             Options below change based on the selected chart type.
           </div>
 
           <button
             type="button"
             onClick={() => updateDisplayOptions(DEFAULT_DISPLAY_OPTIONS)}
-            className="mt-3 h-8 rounded-xl border border-border/70 bg-background px-3 text-xs font-semibold text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
+            className="mt-3 h-8 rounded-xl bg-muted/45 px-3 !text-[13px] font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
           >
             Reset display options
           </button>
@@ -714,9 +718,7 @@ function DisplayOptionsDropdown({
               <OptionToggle
                 label="Grid"
                 checked={displayOptions.showGrid}
-                onChange={(checked) =>
-                  updateDisplayOptions({ showGrid: checked })
-                }
+                onChange={(checked) => updateDisplayOptions({ showGrid: checked })}
               />
             ) : null}
 
@@ -731,17 +733,13 @@ function DisplayOptionsDropdown({
             <OptionToggle
               label="Legend"
               checked={displayOptions.showLegend}
-              onChange={(checked) =>
-                updateDisplayOptions({ showLegend: checked })
-              }
+              onChange={(checked) => updateDisplayOptions({ showLegend: checked })}
             />
 
             <OptionToggle
               label="Labels"
               checked={displayOptions.showLabels}
-              onChange={(checked) =>
-                updateDisplayOptions({ showLabels: checked })
-              }
+              onChange={(checked) => updateDisplayOptions({ showLabels: checked })}
             />
 
             <OptionToggle
@@ -763,9 +761,9 @@ function DisplayOptionsDropdown({
             ) : null}
           </div>
 
-          <div className="mt-4 space-y-4">
+          <div className="mt-4 space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <SelectOption
+              <NativeSelectOption<ChartLegendPosition>
                 label="Legend position"
                 value={
                   displayOptions.showLegend
@@ -786,7 +784,7 @@ function DisplayOptionsDropdown({
                 }
               />
 
-              <SelectOption
+              <NativeSelectOption<ChartLabelMode>
                 label="Label content"
                 value={displayOptions.labelMode}
                 options={[
@@ -800,11 +798,7 @@ function DisplayOptionsDropdown({
             </div>
 
             {isCartesian ? (
-              <div className="rounded-2xl border border-border/70 bg-muted/[0.12] p-3">
-                <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-                  Axis & layout
-                </div>
-
+              <OptionGroup title="Axis & Layout">
                 <div className="grid grid-cols-2 gap-3">
                   <NumberOption
                     label="Axis rotation"
@@ -846,15 +840,11 @@ function DisplayOptionsDropdown({
                     />
                   </div>
                 </div>
-              </div>
+              </OptionGroup>
             ) : null}
 
             {isLineLike ? (
-              <div className="rounded-2xl border border-border/70 bg-muted/[0.12] p-3">
-                <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-                  Line / Area
-                </div>
-
+              <OptionGroup title="Line / Area">
                 <div className="grid grid-cols-2 gap-3">
                   <NumberOption
                     label="Line width"
@@ -899,15 +889,11 @@ function DisplayOptionsDropdown({
                     />
                   </div>
                 </div>
-              </div>
+              </OptionGroup>
             ) : null}
 
             {isBarLike ? (
-              <div className="rounded-2xl border border-border/70 bg-muted/[0.12] p-3">
-                <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-                  Bars
-                </div>
-
+              <OptionGroup title="Bars">
                 <div className="grid grid-cols-2 gap-3">
                   <NumberOption
                     label="Bar width"
@@ -929,15 +915,11 @@ function DisplayOptionsDropdown({
                     }
                   />
                 </div>
-              </div>
+              </OptionGroup>
             ) : null}
 
             {isScatter ? (
-              <div className="rounded-2xl border border-border/70 bg-muted/[0.12] p-3">
-                <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-                  Scatter
-                </div>
-
+              <OptionGroup title="Scatter">
                 <NumberOption
                   label="Point size"
                   value={displayOptions.pointSize}
@@ -947,15 +929,11 @@ function DisplayOptionsDropdown({
                     updateDisplayOptions({ pointSize: value })
                   }
                 />
-              </div>
+              </OptionGroup>
             ) : null}
 
             {isPie ? (
-              <div className="rounded-2xl border border-border/70 bg-muted/[0.12] p-3">
-                <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-                  Pie / Donut
-                </div>
-
+              <OptionGroup title="Pie / Donut">
                 <div className="grid grid-cols-2 gap-3">
                   <NumberOption
                     label="Inner radius"
@@ -987,7 +965,7 @@ function DisplayOptionsDropdown({
                     }
                   />
 
-                  <SelectOption
+                  <NativeSelectOption<PieLabelPosition>
                     label="Label position"
                     value={displayOptions.pieLabelPosition}
                     options={[
@@ -1000,7 +978,7 @@ function DisplayOptionsDropdown({
                     }
                   />
 
-                  <div className="flex items-end">
+                  <div className="col-span-2">
                     <OptionToggle
                       label="Rose chart"
                       checked={displayOptions.pieRoseType}
@@ -1010,11 +988,28 @@ function DisplayOptionsDropdown({
                     />
                   </div>
                 </div>
-              </div>
+              </OptionGroup>
             ) : null}
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function OptionGroup({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl bg-muted/[0.22] p-3">
+      <div className="mb-3 !text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+        {title}
+      </div>
+      {children}
     </div>
   );
 }
@@ -1029,12 +1024,15 @@ function getColumnNamesByFilter({
   return columns
     .filter((column) => {
       if (filter === "all_columns") return true;
+
       if (filter === "recommended") {
         return RECOMMENDED_GROUP_TYPES.includes(column.type);
       }
+
       if (filter === "categorical") return column.type === "category";
       if (filter === "boolean") return column.type === "boolean";
       if (filter === "numeric") return NUMERIC_CHART_TYPES.includes(column.type);
+
       if (filter === "date_time") {
         return DATE_TIME_CHART_TYPES.includes(column.type);
       }
@@ -1290,19 +1288,19 @@ export function ChartBuilder() {
   if (!workspace) return null;
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[1.35rem] border border-border bg-background shadow-sm">
-      <div className="shrink-0 border-b border-border/70 px-4 py-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[1.35rem] border border-border bg-background !text-[13px] shadow-sm">
+      <div className="shrink-0 px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
-            <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-muted/35 text-foreground">
-              <BarChart3 className="size-5" />
+            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-2xl bg-muted/45 text-foreground">
+              <BarChart3 className="size-4" />
             </span>
 
             <div className="min-w-0">
-              <h2 className="text-[15px] font-bold tracking-[-0.02em] text-foreground">
+              <h2 className="!text-[13px] font-bold tracking-[-0.02em] text-foreground">
                 Charts
               </h2>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-1 !text-[13px] leading-5 text-muted-foreground">
                 Build exportable visuals from schema-aware columns.
               </p>
             </div>
@@ -1316,139 +1314,131 @@ export function ChartBuilder() {
         </div>
       </div>
 
-      <div className="shrink-0 border-b border-border/70 bg-muted/[0.18] px-4 py-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <ToolChip
-            label="Chart type"
-            value={formatChartTypeLabel(config.chartType)}
-          />
+      <div className="flex shrink-0 flex-wrap items-center gap-2 bg-muted/[0.18] px-4 py-2">
+        <ToolChip label="Chart type" value={formatChartTypeLabel(config.chartType)} />
+        <ToolChip label="Rows" value={formatCount(rows.length)} />
+        <ToolChip label="Shown columns" value={formatCount(safeGroupableColumns.length)} />
+        <ToolChip label="Numeric columns" value={formatCount(numericColumns.length)} />
 
-          <ToolChip
-            label="Rows"
-            value={workspace.workingRows.length.toLocaleString()}
-          />
+        <ColumnPoolDropdown value={columnFilter} onChange={updateColumnFilter} />
 
-          <ToolChip label="Shown columns" value={safeGroupableColumns.length} />
-
-          <ToolChip label="Numeric columns" value={numericColumns.length} />
-
-          <ColumnPoolDropdown
-            value={columnFilter}
-            onChange={updateColumnFilter}
-          />
-
-          <DisplayOptionsDropdown
-            chartType={config.chartType}
-            displayOptions={config.displayOptions}
-            updateDisplayOptions={updateDisplayOptions}
-          />
-        </div>
+        <DisplayOptionsDropdown
+          chartType={config.chartType}
+          displayOptions={config.displayOptions}
+          updateDisplayOptions={updateDisplayOptions}
+        />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <div className="grid h-full min-h-0 grid-cols-1 xl:grid-cols-[380px_minmax(0,1fr)]">
-          <aside className="space-y-4 overflow-auto border-b border-border/70 bg-muted/[0.08] p-4 xl:border-b-0 xl:border-r">
-            <div className="rounded-2xl border border-border bg-background p-4 shadow-sm">
-              <h3 className="text-sm font-bold text-foreground">
+      <div className="min-h-0 flex-1 bg-muted/[0.06] p-3">
+        <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[300px_minmax(0,1fr)]">
+          <aside className="min-h-0 overflow-auto rounded-2xl bg-background/70 p-3">
+            <div className="mb-4">
+              <h3 className="!text-[13px] font-bold text-foreground">
                 Chart settings
               </h3>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              <p className="mt-1 !text-[13px] leading-5 text-muted-foreground">
                 {getChartDescription(config)}
               </p>
+            </div>
 
-              <div className="mt-4 space-y-4">
-                <InputWithLabel
-                  label="Chart title"
-                  value={config.title}
-                  inputClassName="h-10 text-xs"
-                  onChange={(event) =>
-                    updateConfig("title", event.target.value)
+            <div className="space-y-4">
+              <InputWithLabel
+                label="Chart title"
+                value={config.title}
+                onChange={(event) =>
+                  updateConfig("title", event.target.value)
+                }
+                inputClassName="h-10 rounded-xl !text-[13px]"
+              />
+
+              <CheckSelect<ChartType>
+                label="Chart type"
+                value={config.chartType}
+                options={CHART_TYPE_OPTIONS}
+                onChange={(value) => updateConfig("chartType", value)}
+                triggerClassName="min-h-10 rounded-xl !text-[13px]"
+              />
+
+              {isGroupedChart(config.chartType) ? (
+                <CheckSelect<Aggregation>
+                  label="Aggregation"
+                  value={config.aggregation}
+                  options={AGGREGATION_OPTIONS}
+                  onChange={(value) => updateConfig("aggregation", value)}
+                  triggerClassName="min-h-10 rounded-xl !text-[13px]"
+                />
+              ) : null}
+
+              {config.chartType !== "histogram" ? (
+                <CheckSelect<string>
+                  label={
+                    config.chartType === "scatter"
+                      ? "X column"
+                      : "Group by column"
                   }
+                  value={config.xColumn}
+                  options={toOptions(xColumnOptions)}
+                  onChange={(value) => updateConfig("xColumn", value)}
+                  disabled={xColumnOptions.length === 0}
+                  triggerClassName="min-h-10 rounded-xl !text-[13px]"
                 />
+              ) : null}
 
-                <CheckSelect
-                  label="Chart type"
-                  value={config.chartType}
-                  options={CHART_TYPE_OPTIONS}
-                  onChange={(value) => updateConfig("chartType", value)}
-                  triggerClassName="h-10 text-xs"
+              {groupedCountChart ? (
+                <div className="rounded-2xl bg-muted/[0.22] p-3">
+                  <p className="!text-[13px] font-bold text-foreground">
+                    Y value
+                  </p>
+                  <p className="mt-2 !text-[13px] leading-5 text-muted-foreground">
+                    Row count
+                  </p>
+                  <p className="mt-2 !text-[13px] leading-5 text-muted-foreground">
+                    Count aggregation does not need a numeric Y column.
+                  </p>
+                </div>
+              ) : (
+                <CheckSelect<string>
+                  label={
+                    config.chartType === "histogram"
+                      ? "Numeric column"
+                      : "Y value"
+                  }
+                  value={config.yColumn}
+                  options={toOptions(yColumnOptions)}
+                  onChange={(value) => updateConfig("yColumn", value)}
+                  disabled={yColumnOptions.length === 0}
+                  triggerClassName="min-h-10 rounded-xl !text-[13px]"
                 />
+              )}
 
-                {isGroupedChart(config.chartType) ? (
-                  <CheckSelect
-                    label="Aggregation"
-                    value={config.aggregation}
-                    options={AGGREGATION_OPTIONS}
-                    onChange={(value) => updateConfig("aggregation", value)}
-                    triggerClassName="h-10 text-xs"
-                  />
-                ) : null}
+              {isGroupedChart(config.chartType) ? (
+                <InputWithLabel
+                  label="Top groups"
+                  type="number"
+                  min={3}
+                  max={50}
+                  value={config.topN}
+                  onChange={(event) =>
+                    updateConfig("topN", Number(event.target.value))
+                  }
+                  inputClassName="h-10 rounded-xl !text-[13px]"
+                />
+              ) : null}
 
-                {config.chartType !== "histogram" ? (
-                  <CheckSelect
-                    label={
-                      config.chartType === "scatter"
-                        ? "X numeric column"
-                        : "Group by column"
-                    }
-                    value={config.xColumn}
-                    options={toOptions(xColumnOptions)}
-                    onChange={(value) => updateConfig("xColumn", value)}
-                    disabled={xColumnOptions.length === 0}
-                    triggerClassName="h-10 text-xs"
-                  />
-                ) : null}
-
-                {groupedCountChart ? (
-                  <div className="rounded-2xl border border-border/70 bg-muted/[0.18] p-3 text-xs leading-5 text-muted-foreground">
-                    <div className="font-semibold text-foreground">Y value</div>
-                    <div className="mt-1">Row count</div>
-                    <div className="mt-1">
-                      Count aggregation does not need a numeric Y column.
-                    </div>
+              {compatibilityMessage ? (
+                <div className="rounded-2xl bg-amber-100 px-3 py-2 text-amber-950 dark:bg-amber-950/35 dark:text-amber-100">
+                  <div className="flex items-start gap-2">
+                    <Info className="mt-0.5 size-4 shrink-0" />
+                    <p className="!text-[13px] leading-5">
+                      {compatibilityMessage}
+                    </p>
                   </div>
-                ) : (
-                  <CheckSelect
-                    label={
-                      config.chartType === "histogram"
-                        ? "Numeric column"
-                        : "Y numeric column"
-                    }
-                    value={config.yColumn}
-                    options={toOptions(yColumnOptions)}
-                    onChange={(value) => updateConfig("yColumn", value)}
-                    disabled={yColumnOptions.length === 0}
-                    triggerClassName="h-10 text-xs"
-                  />
-                )}
-
-                {isGroupedChart(config.chartType) ? (
-                  <InputWithLabel
-                    label="Top groups"
-                    value={String(config.topN)}
-                    type="number"
-                    min={3}
-                    max={50}
-                    inputClassName="h-10 text-xs"
-                    onChange={(event) =>
-                      updateConfig("topN", Number(event.target.value))
-                    }
-                  />
-                ) : null}
-
-                {compatibilityMessage ? (
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
-                    <div className="flex items-start gap-2">
-                      <Info className="mt-0.5 size-4 shrink-0" />
-                      <span>{compatibilityMessage}</span>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+                </div>
+              ) : null}
             </div>
           </aside>
 
-          <div className="min-h-0 overflow-auto p-4">
+          <div className="min-h-0 min-w-0 rounded-2xl bg-background/70 p-3">
             <ChartView
               rows={rows}
               config={config}

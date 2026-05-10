@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
 import { Download, Info } from "lucide-react";
@@ -27,18 +27,106 @@ type ChartDatum = {
   y?: number;
 };
 
-type ReactEChartsRef = InstanceType<typeof ReactECharts>;
+type ReactEChartsRef = {
+  getEchartsInstance: () => {
+    getDataURL: (options: {
+      type: "png";
+      pixelRatio: number;
+      backgroundColor: string;
+    }) => string;
+  };
+};
 
-const COLORS = [
-  "#0f766e",
-  "#2563eb",
-  "#c2410c",
-  "#65a30d",
-  "#be185d",
-  "#0891b2",
-  "#7c3aed",
-  "#ca8a04",
-];
+type ChartThemeTokens = {
+  background: string;
+  foreground: string;
+  mutedForeground: string;
+  border: string;
+  gridLine: string;
+  tooltipBackground: string;
+  tooltipBorder: string;
+  labelColor: string;
+  colors: string[];
+};
+
+type CartesianLabelPosition = "top" | "inside";
+type PieLabelPosition = "center" | "inside" | "outer";
+
+function hslVar(name: string, fallback: string) {
+  if (typeof window === "undefined") return fallback;
+
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim();
+
+  if (!value) return fallback;
+
+  return `hsl(${value})`;
+}
+
+function getChartThemeTokens(): ChartThemeTokens {
+  const isDark =
+    typeof document !== "undefined" &&
+    document.documentElement.classList.contains("dark");
+
+  return {
+    background: hslVar("--background", isDark ? "#111827" : "#ffffff"),
+    foreground: hslVar("--foreground", isDark ? "#dbe4ee" : "#0f172a"),
+    mutedForeground: hslVar(
+      "--muted-foreground",
+      isDark ? "#94a3b8" : "#64748b",
+    ),
+    border: hslVar("--border", isDark ? "#334155" : "#e2e8f0"),
+    gridLine: isDark
+      ? "rgba(148, 163, 184, 0.18)"
+      : "rgba(100, 116, 139, 0.22)",
+    tooltipBackground: isDark ? "#182233" : "#ffffff",
+    tooltipBorder: isDark
+      ? "rgba(148, 163, 184, 0.28)"
+      : "rgba(15, 23, 42, 0.12)",
+    labelColor: isDark ? "#cbd5e1" : "#334155",
+    colors: [
+      hslVar("--chart-1", isDark ? "#5eead4" : "#0f766e"),
+      hslVar("--chart-2", isDark ? "#60a5fa" : "#2563eb"),
+      hslVar("--chart-3", isDark ? "#fb923c" : "#c2410c"),
+      hslVar("--chart-4", isDark ? "#a3e635" : "#65a30d"),
+      hslVar("--chart-5", isDark ? "#f472b6" : "#be185d"),
+      "#0891b2",
+      "#7c3aed",
+      "#ca8a04",
+    ],
+  };
+}
+
+function useChartThemeTokens() {
+  const [tokens, setTokens] = useState<ChartThemeTokens>(() =>
+    getChartThemeTokens(),
+  );
+
+  useEffect(() => {
+    function refreshTokens() {
+      setTokens(getChartThemeTokens());
+    }
+
+    refreshTokens();
+
+    window.addEventListener("cleanframe-theme-change", refreshTokens);
+
+    const observer = new MutationObserver(refreshTokens);
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+
+    return () => {
+      window.removeEventListener("cleanframe-theme-change", refreshTokens);
+      observer.disconnect();
+    };
+  }, []);
+
+  return tokens;
+}
 
 function parseNumber(value: unknown): number | null {
   const normalized = String(value ?? "")
@@ -68,6 +156,7 @@ function median(values: number[]) {
 
 function aggregate(values: number[], aggregation: Aggregation) {
   if (aggregation === "count") return values.length;
+
   if (values.length === 0) return 0;
 
   if (aggregation === "sum") {
@@ -79,7 +168,9 @@ function aggregate(values: number[], aggregation: Aggregation) {
   }
 
   if (aggregation === "min") return Math.min(...values);
+
   if (aggregation === "max") return Math.max(...values);
+
   if (aggregation === "median") return median(values);
 
   return values.length;
@@ -223,24 +314,14 @@ function formatNumber(value: number) {
 }
 
 function getLabelFormatter(displayOptions: ChartDisplayOptions): string {
-  if (displayOptions.labelMode === "name") {
-    return "{b}";
-  }
-
-  if (displayOptions.labelMode === "percent") {
-    return "{d}%";
-  }
-
-  if (displayOptions.labelMode === "name_percent") {
-    return "{b} {d}%";
-  }
+  if (displayOptions.labelMode === "name") return "{b}";
+  if (displayOptions.labelMode === "percent") return "{d}%";
+  if (displayOptions.labelMode === "name_percent") return "{b} {d}%";
 
   return "{c}";
 }
 
-function getCartesianLabelFormatter(
-  displayOptions: ChartDisplayOptions,
-): string {
+function getCartesianLabelFormatter(displayOptions: ChartDisplayOptions): string {
   if (displayOptions.labelMode === "name") return "{b}";
 
   return "{c}";
@@ -248,31 +329,50 @@ function getCartesianLabelFormatter(
 
 function getLegendConfig(
   displayOptions: ChartDisplayOptions,
+  chartTheme: ChartThemeTokens,
 ): EChartsOption["legend"] {
   if (!displayOptions.showLegend) return undefined;
 
+  const baseLegend = {
+    type: "scroll" as const,
+    textStyle: {
+      color: chartTheme.mutedForeground,
+      fontSize: 11,
+      fontWeight: 500,
+    },
+    pageIconColor: chartTheme.mutedForeground,
+    pageIconInactiveColor: chartTheme.border,
+    pageTextStyle: {
+      color: chartTheme.mutedForeground,
+    },
+  };
+
   if (displayOptions.legendPosition === "top") {
     return {
+      ...baseLegend,
       top: 0,
       left: "center",
-      type: "scroll",
     };
   }
 
   if (displayOptions.legendPosition === "right") {
     return {
+      ...baseLegend,
       top: "middle",
       right: 0,
       orient: "vertical",
-      type: "scroll",
     };
   }
 
-  return {
-    bottom: 0,
-    left: "center",
-    type: "scroll",
-  };
+  if (displayOptions.legendPosition === "bottom") {
+    return {
+      ...baseLegend,
+      bottom: 0,
+      left: "center",
+    };
+  }
+
+  return undefined;
 }
 
 function getGridConfig(
@@ -300,6 +400,7 @@ function getGridConfig(
 
 function getDataZoomConfig(
   displayOptions: ChartDisplayOptions,
+  chartTheme: ChartThemeTokens,
 ): EChartsOption["dataZoom"] {
   if (!displayOptions.showDataZoom) return undefined;
 
@@ -315,50 +416,244 @@ function getDataZoomConfig(
       bottom: 12,
       start: 0,
       end: 100,
+      borderColor: chartTheme.border,
+      backgroundColor: "transparent",
+      fillerColor: "rgba(45, 212, 191, 0.18)",
+      handleStyle: {
+        color: chartTheme.mutedForeground,
+        borderColor: chartTheme.border,
+      },
+      textStyle: {
+        color: chartTheme.mutedForeground,
+        fontSize: 11,
+      },
     },
   ];
+}
+
+function getTooltipTrigger(chartType: ChartConfig["chartType"]) {
+  if (chartType === "line" || chartType === "area") return "axis";
+
+  return "item";
+}
+
+function getTooltipConfig({
+  config,
+  displayOptions,
+  chartTheme,
+}: {
+  config: ChartConfig;
+  displayOptions: ChartDisplayOptions;
+  chartTheme: ChartThemeTokens;
+}): EChartsOption["tooltip"] {
+  if (!displayOptions.showTooltip) return undefined;
+
+  if (config.chartType === "pie") {
+    return {
+      trigger: "item",
+      backgroundColor: chartTheme.tooltipBackground,
+      borderColor: chartTheme.tooltipBorder,
+      borderWidth: 1,
+      padding: [8, 10],
+      textStyle: {
+        color: chartTheme.foreground,
+        fontSize: 12,
+        fontWeight: 500,
+      },
+      extraCssText:
+        "border-radius: 12px; box-shadow: 0 12px 28px rgba(0,0,0,0.22);",
+      formatter: "{b}<br />{c} ({d}%)",
+    };
+  }
+
+  return {
+    trigger: getTooltipTrigger(config.chartType),
+    axisPointer:
+      config.chartType === "line" || config.chartType === "area"
+        ? {
+            type: "line",
+            lineStyle: {
+              color: chartTheme.gridLine,
+              width: 1,
+              type: "dashed",
+            },
+            z: 0,
+          }
+        : undefined,
+    backgroundColor: chartTheme.tooltipBackground,
+    borderColor: chartTheme.tooltipBorder,
+    borderWidth: 1,
+    padding: [8, 10],
+    textStyle: {
+      color: chartTheme.foreground,
+      fontSize: 12,
+      fontWeight: 500,
+    },
+    extraCssText:
+      "border-radius: 12px; box-shadow: 0 12px 28px rgba(0,0,0,0.22);",
+    valueFormatter: (value) => formatNumber(Number(value)),
+  };
+}
+
+function getAxisLabelStyle(
+  displayOptions: ChartDisplayOptions,
+  chartTheme: ChartThemeTokens,
+) {
+  return {
+    color: chartTheme.mutedForeground,
+    fontSize: displayOptions.axisFontSize,
+    fontWeight: 500,
+  };
+}
+
+function getValueAxisStyle(
+  displayOptions: ChartDisplayOptions,
+  chartTheme: ChartThemeTokens,
+) {
+  return {
+    axisLabel: getAxisLabelStyle(displayOptions, chartTheme),
+    axisLine: {
+      lineStyle: {
+        color: chartTheme.border,
+      },
+    },
+    axisTick: {
+      lineStyle: {
+        color: chartTheme.border,
+      },
+    },
+    axisPointer: {
+      show: false,
+    },
+    splitLine: {
+      show: displayOptions.showGrid,
+      lineStyle: {
+        color: chartTheme.gridLine,
+        type: "dashed" as const,
+      },
+    },
+  };
+}
+
+function getCartesianSeriesLabelStyle({
+  displayOptions,
+  chartTheme,
+  formatter,
+  position = "top",
+}: {
+  displayOptions: ChartDisplayOptions;
+  chartTheme: ChartThemeTokens;
+  formatter: string;
+  position?: CartesianLabelPosition;
+}) {
+  return {
+    show: displayOptions.showLabels,
+    position,
+    color: chartTheme.labelColor,
+    fontSize: Math.max(10, displayOptions.axisFontSize),
+    fontWeight: 700,
+    textBorderWidth: 0,
+    textShadowBlur: 0,
+    textShadowColor: "transparent",
+    formatter,
+  };
+}
+
+function getPieSeriesLabelStyle({
+  displayOptions,
+  chartTheme,
+  formatter,
+  position,
+}: {
+  displayOptions: ChartDisplayOptions;
+  chartTheme: ChartThemeTokens;
+  formatter: string;
+  position: PieLabelPosition;
+}) {
+  return {
+    show: displayOptions.showLabels,
+    position,
+    color: chartTheme.labelColor,
+    fontSize: Math.max(10, displayOptions.axisFontSize),
+    fontWeight: 700,
+    textBorderWidth: 0,
+    textShadowBlur: 0,
+    textShadowColor: "transparent",
+    formatter,
+  };
+}
+
+function buildBarLikeData({
+  chartData,
+  chartTheme,
+  borderRadius,
+}: {
+  chartData: ChartDatum[];
+  chartTheme: ChartThemeTokens;
+  borderRadius: number;
+}) {
+  const barColor = chartTheme.colors[0] ?? "#5eead4";
+
+  return chartData.map((item) => ({
+    name: item.name,
+    value: item.value,
+    itemStyle: {
+      color: barColor,
+      opacity: 1,
+      borderRadius: [borderRadius, borderRadius, 0, 0],
+    },
+    emphasis: {
+      disabled: true,
+      itemStyle: {
+        color: barColor,
+        opacity: 1,
+        borderRadius: [borderRadius, borderRadius, 0, 0],
+      },
+    },
+  }));
 }
 
 function buildChartOption({
   config,
   chartData,
+  chartTheme,
 }: {
   config: ChartConfig;
   chartData: ChartDatum[];
+  chartTheme: ChartThemeTokens;
 }): EChartsOption {
   const displayOptions = config.displayOptions;
-  const legend = getLegendConfig(displayOptions);
+  const legend = getLegendConfig(displayOptions, chartTheme);
   const labelFormatter = getLabelFormatter(displayOptions);
   const cartesianLabelFormatter = getCartesianLabelFormatter(displayOptions);
 
   const baseOption: EChartsOption = {
-    color: COLORS,
+    color: chartTheme.colors,
     animation: displayOptions.enableAnimation,
     animationDuration: displayOptions.enableAnimation ? 500 : 0,
+    stateAnimation: {
+      duration: 0,
+    },
     backgroundColor: "transparent",
-    tooltip: displayOptions.showTooltip
-      ? {
-          trigger: config.chartType === "scatter" ? "item" : "axis",
-          valueFormatter: (value) => formatNumber(Number(value)),
-        }
-      : undefined,
+    axisPointer: {
+      show: false,
+    },
+    tooltip: getTooltipConfig({
+      config,
+      displayOptions,
+      chartTheme,
+    }),
     legend,
   };
 
   if (config.chartType === "pie") {
-    const labelPosition =
+    const labelPosition: PieLabelPosition =
       displayOptions.pieLabelPosition === "outside"
         ? "outer"
         : displayOptions.pieLabelPosition;
 
     return {
       ...baseOption,
-      tooltip: displayOptions.showTooltip
-        ? {
-            trigger: "item",
-            formatter: "{b}<br />{c} ({d}%)",
-          }
-        : undefined,
       series: [
         {
           name: config.title,
@@ -376,14 +671,17 @@ function buildChartOption({
             moveOverlap: "shiftY",
           },
           emphasis: {
-            scale: true,
-            scaleSize: 8,
+            scale: false,
+            disabled: true,
           },
           label: {
-            show: displayOptions.showLabels,
-            formatter:
-              displayOptions.labelMode === "value" ? "{c}" : labelFormatter,
-            position: labelPosition,
+            ...getPieSeriesLabelStyle({
+              displayOptions,
+              chartTheme,
+              formatter:
+                displayOptions.labelMode === "value" ? "{c}" : labelFormatter,
+              position: labelPosition,
+            }),
             overflow: "truncate",
             width: 120,
           },
@@ -394,6 +692,9 @@ function buildChartOption({
             length: 14,
             length2: 10,
             smooth: true,
+            lineStyle: {
+              color: chartTheme.border,
+            },
           },
           data: chartData.map((item) => ({
             name: item.name,
@@ -401,65 +702,68 @@ function buildChartOption({
           })),
         },
       ],
-    };
+    } as EChartsOption;
   }
 
   if (config.chartType === "scatter") {
     return {
       ...baseOption,
       grid: getGridConfig(displayOptions),
-      dataZoom: getDataZoomConfig(displayOptions),
+      dataZoom: getDataZoomConfig(displayOptions, chartTheme),
       xAxis: {
         type: "value",
         name: config.xColumn,
         nameLocation: "middle",
         nameGap: 30,
-        axisLabel: {
-          fontSize: displayOptions.axisFontSize,
-          rotate: displayOptions.axisLabelRotation,
+        nameTextStyle: {
+          color: chartTheme.mutedForeground,
+          fontSize: 11,
+          fontWeight: 600,
         },
-        splitLine: {
-          show: displayOptions.showGrid,
-          lineStyle: {
-            type: "dashed",
-            color: "#d8dee8",
-          },
+        ...getValueAxisStyle(displayOptions, chartTheme),
+        axisLabel: {
+          ...getAxisLabelStyle(displayOptions, chartTheme),
+          rotate: displayOptions.axisLabelRotation,
         },
       },
       yAxis: {
         type: "value",
         name: config.yColumn,
         nameGap: 40,
-        axisLabel: {
-          fontSize: displayOptions.axisFontSize,
+        nameTextStyle: {
+          color: chartTheme.mutedForeground,
+          fontSize: 11,
+          fontWeight: 600,
         },
-        splitLine: {
-          show: displayOptions.showGrid,
-          lineStyle: {
-            type: "dashed",
-            color: "#d8dee8",
-          },
-        },
+        ...getValueAxisStyle(displayOptions, chartTheme),
       },
       series: [
         {
           name: config.title,
           type: "scatter",
           symbolSize: displayOptions.pointSize,
-          data: chartData.map((item) => [item.x, item.y]),
+          data: chartData
+            .filter(
+              (item): item is ChartDatum & { x: number; y: number } =>
+                typeof item.x === "number" && typeof item.y === "number",
+            )
+            .map((item) => [item.x, item.y]),
+          emphasis: {
+            disabled: true,
+          },
           labelLayout: {
             hideOverlap: true,
             moveOverlap: "shiftY",
           },
-          label: {
-            show: displayOptions.showLabels,
-            position: "top",
+          label: getCartesianSeriesLabelStyle({
+            displayOptions,
+            chartTheme,
             formatter: "{@[1]}",
-            fontSize: displayOptions.axisFontSize,
-          },
+            position: "top",
+          }),
         },
       ],
-    };
+    } as EChartsOption;
   }
 
   const xAxisData = chartData.map((item) => item.name);
@@ -468,31 +772,35 @@ function buildChartOption({
   const commonCartesianOption: EChartsOption = {
     ...baseOption,
     grid: getGridConfig(displayOptions),
-    dataZoom: getDataZoomConfig(displayOptions),
+    dataZoom: getDataZoomConfig(displayOptions, chartTheme),
     xAxis: {
       type: "category",
       data: xAxisData,
+      axisPointer: {
+        show: false,
+      },
       axisLabel: {
-        fontSize: displayOptions.axisFontSize,
+        ...getAxisLabelStyle(displayOptions, chartTheme),
         interval: 0,
         rotate: displayOptions.axisLabelRotation,
         hideOverlap: true,
         overflow: displayOptions.truncateAxisLabels ? "truncate" : "break",
         width: displayOptions.truncateAxisLabels ? 90 : undefined,
       },
+      axisLine: {
+        lineStyle: {
+          color: chartTheme.border,
+        },
+      },
+      axisTick: {
+        lineStyle: {
+          color: chartTheme.border,
+        },
+      },
     },
     yAxis: {
       type: "value",
-      axisLabel: {
-        fontSize: displayOptions.axisFontSize,
-      },
-      splitLine: {
-        show: displayOptions.showGrid,
-        lineStyle: {
-          type: "dashed",
-          color: "#d8dee8",
-        },
-      },
+      ...getValueAxisStyle(displayOptions, chartTheme),
     },
   };
 
@@ -509,19 +817,22 @@ function buildChartOption({
           lineStyle: {
             width: displayOptions.lineWidth,
           },
+          emphasis: {
+            focus: "series",
+          },
           labelLayout: {
             hideOverlap: true,
             moveOverlap: "shiftY",
           },
-          label: {
-            show: displayOptions.showLabels,
-            position: "top",
+          label: getCartesianSeriesLabelStyle({
+            displayOptions,
+            chartTheme,
             formatter: cartesianLabelFormatter,
-            fontSize: displayOptions.axisFontSize,
-          },
+            position: "top",
+          }),
         },
       ],
-    };
+    } as EChartsOption;
   }
 
   if (config.chartType === "area") {
@@ -540,30 +851,50 @@ function buildChartOption({
           areaStyle: {
             opacity: displayOptions.areaOpacity,
           },
+          emphasis: {
+            focus: "series",
+          },
           labelLayout: {
             hideOverlap: true,
             moveOverlap: "shiftY",
           },
-          label: {
-            show: displayOptions.showLabels,
-            position: "top",
+          label: getCartesianSeriesLabelStyle({
+            displayOptions,
+            chartTheme,
             formatter: cartesianLabelFormatter,
-            fontSize: displayOptions.axisFontSize,
-          },
+            position: "top",
+          }),
         },
       ],
-    };
+    } as EChartsOption;
   }
+
+  const barData = buildBarLikeData({
+    chartData,
+    chartTheme,
+    borderRadius: displayOptions.barRadius,
+  });
 
   return {
     ...commonCartesianOption,
+    tooltip: {
+      ...getTooltipConfig({
+        config,
+        displayOptions,
+        chartTheme,
+      }),
+      trigger: "item",
+      axisPointer: undefined,
+    },
     series: [
       {
         name: config.title,
         type: "bar",
-        data: yAxisData,
+        data: barData,
         barMaxWidth: displayOptions.barWidth,
         itemStyle: {
+          color: chartTheme.colors[0] ?? "#5eead4",
+          opacity: 1,
           borderRadius: [
             displayOptions.barRadius,
             displayOptions.barRadius,
@@ -571,19 +902,34 @@ function buildChartOption({
             0,
           ],
         },
+        emphasis: {
+          disabled: true,
+        },
+        blur: {
+          itemStyle: {
+            opacity: 1,
+          },
+        },
+        select: {
+          disabled: true,
+          itemStyle: {
+            opacity: 1,
+          },
+        },
+        selectedMode: false,
         labelLayout: {
           hideOverlap: true,
           moveOverlap: "shiftY",
         },
-        label: {
-          show: displayOptions.showLabels,
-          position: "top",
+        label: getCartesianSeriesLabelStyle({
+          displayOptions,
+          chartTheme,
           formatter: cartesianLabelFormatter,
-          fontSize: displayOptions.axisFontSize,
-        },
+          position: "top",
+        }),
       },
     ],
-  };
+  } as EChartsOption;
 }
 
 export function ChartView({
@@ -592,8 +938,8 @@ export function ChartView({
   numericColumns,
   groupableColumns,
 }: Props) {
-  const chartWrapperRef = useRef<HTMLDivElement | null>(null);
   const chartInstanceRef = useRef<ReactEChartsRef | null>(null);
+  const chartTheme = useChartThemeTokens();
 
   const compatibilityMessage = getCompatibilityMessage({
     config,
@@ -619,17 +965,19 @@ export function ChartView({
     return buildChartOption({
       config,
       chartData,
+      chartTheme,
     });
-  }, [config, chartData]);
+  }, [config, chartData, chartTheme]);
 
   function downloadPng() {
     const chart = chartInstanceRef.current?.getEchartsInstance();
+
     if (!chart || chartData.length === 0) return;
 
     const dataUrl = chart.getDataURL({
       type: "png",
       pixelRatio: 2,
-      backgroundColor: "#ffffff",
+      backgroundColor: chartTheme.background,
     });
 
     const link = document.createElement("a");
@@ -642,7 +990,7 @@ export function ChartView({
     if (compatibilityMessage) {
       return (
         <ChartEmptyState
-          title="Chart cannot be rendered"
+          title="Chart setup needs attention"
           description={compatibilityMessage}
         />
       );
@@ -651,61 +999,54 @@ export function ChartView({
     if (chartData.length === 0) {
       return (
         <ChartEmptyState
-          title="No chart data"
-          description="Try a different chart type, column, or aggregation."
+          title="No chart data available"
+          description="Try another chart type, column, aggregation, or column pool."
         />
       );
     }
 
     return (
       <ReactECharts
-        ref={chartInstanceRef}
+        ref={chartInstanceRef as never}
         option={chartOption}
         notMerge
-        lazyUpdate
-        style={{
-          width: "100%",
-          height: "100%",
-          minHeight: 430,
-        }}
+        lazyUpdate={false}
+        opts={{ renderer: "canvas" }}
+        style={{ width: "100%", height: "100%" }}
+        className="h-full w-full"
       />
     );
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-3 border-b border-border/70 pb-3">
-        <div>
-          <h3 className="text-sm font-bold text-foreground">
+    <section className="flex h-full min-h-[520px] min-w-0 flex-col overflow-hidden">
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 px-1 pb-3">
+        <div className="min-w-0">
+          <h3 className="truncate !text-[13px] font-bold leading-5 text-foreground">
             {config.title || "Chart"}
           </h3>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-0.5 !text-[13px] leading-5 text-muted-foreground">
             {config.chartType} · {chartData.length.toLocaleString()} plotted
             items
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="h-8 rounded-xl px-3 text-xs"
-            disabled={chartData.length === 0}
-            onClick={downloadPng}
-          >
-            <Download className="mr-1.5 size-3.5" />
-            PNG
-          </Button>
-        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={downloadPng}
+          disabled={Boolean(compatibilityMessage) || chartData.length === 0}
+          className="h-8 rounded-xl px-3 !text-[13px]"
+        >
+          <Download className="mr-1.5 size-3.5" />
+          PNG
+        </Button>
       </div>
 
-      <div
-        ref={chartWrapperRef}
-        className="min-h-[430px] flex-1 rounded-2xl border border-border bg-background p-4"
-      >
-        {renderChart()}
+      <div className="min-h-0 flex-1 rounded-2xl bg-muted/[0.12] p-3">
+        <div className="h-full min-h-[420px]">{renderChart()}</div>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -717,11 +1058,17 @@ function ChartEmptyState({
   description: string;
 }) {
   return (
-    <div className="flex h-full min-h-[380px] items-center justify-center rounded-2xl border border-dashed border-border bg-muted/[0.12]">
-      <div className="max-w-md text-center">
-        <Info className="mx-auto size-8 text-muted-foreground" />
-        <h3 className="mt-3 text-sm font-bold text-foreground">{title}</h3>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+    <div className="flex h-full min-h-[380px] items-center justify-center rounded-2xl bg-background/60 p-6 text-center">
+      <div className="max-w-sm">
+        <span className="mx-auto flex size-10 items-center justify-center rounded-2xl bg-muted/45 text-muted-foreground">
+          <Info className="size-5" />
+        </span>
+
+        <h3 className="mt-3 !text-[13px] font-bold text-foreground">
+          {title}
+        </h3>
+
+        <p className="mt-1 !text-[13px] leading-5 text-muted-foreground">
           {description}
         </p>
       </div>

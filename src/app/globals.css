@@ -51,54 +51,71 @@
 
   --selection-bg: #99f6e4;
   --selection-text: #042f2e;
+
+  --scrollbar-track: 210 40% 96%;
+  --scrollbar-thumb: 214 20% 72%;
+  --scrollbar-thumb-hover: 214 20% 58%;
 }
 
 .dark {
-  --background: 222 47% 6%;
-  --foreground: 210 40% 98%;
+  color-scheme: dark;
 
-  --card: 222 40% 9%;
-  --card-foreground: 210 40% 98%;
+  /*
+    Softer dark mode:
+    - less pure black
+    - less pure white text
+    - lower contrast borders
+    - easier on eyes for dense tables
+  */
+  --background: 224 26% 9%;
+  --foreground: 215 28% 86%;
 
-  --popover: 222 40% 9%;
-  --popover-foreground: 210 40% 98%;
+  --card: 224 24% 10.5%;
+  --card-foreground: 215 28% 86%;
 
-  --primary: 173 70% 46%;
-  --primary-foreground: 222 47% 6%;
+  --popover: 224 24% 11%;
+  --popover-foreground: 215 28% 86%;
 
-  --secondary: 222 30% 13%;
-  --secondary-foreground: 210 40% 98%;
+  --primary: 170 46% 44%;
+  --primary-foreground: 222 47% 7%;
 
-  --muted: 222 28% 12%;
-  --muted-foreground: 215 15% 72%;
+  --secondary: 224 18% 15%;
+  --secondary-foreground: 215 24% 86%;
 
-  --accent: 173 70% 46%;
-  --accent-foreground: 222 47% 6%;
+  --muted: 224 18% 14%;
+  --muted-foreground: 216 15% 64%;
 
-  --destructive: 0 63% 45%;
-  --destructive-foreground: 210 40% 98%;
+  --accent: 170 46% 44%;
+  --accent-foreground: 222 47% 7%;
 
-  --border: 217 18% 20%;
-  --input: 217 18% 20%;
-  --ring: 173 70% 46%;
+  --destructive: 0 56% 42%;
+  --destructive-foreground: 210 30% 94%;
 
-  --chart-1: 173 70% 46%;
-  --chart-2: 217 91% 60%;
-  --chart-3: 24 95% 53%;
-  --chart-4: 84 81% 44%;
-  --chart-5: 330 81% 60%;
+  --border: 224 14% 22%;
+  --input: 224 14% 22%;
+  --ring: 170 46% 44%;
 
-  --sidebar: 222 47% 6%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-primary: 173 70% 46%;
-  --sidebar-primary-foreground: 222 47% 6%;
-  --sidebar-accent: 222 28% 12%;
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-border: 217 18% 20%;
-  --sidebar-ring: 173 70% 46%;
+  --chart-1: 170 46% 44%;
+  --chart-2: 217 72% 61%;
+  --chart-3: 28 82% 58%;
+  --chart-4: 92 55% 52%;
+  --chart-5: 330 58% 62%;
 
-  --selection-bg: #14b8a6;
-  --selection-text: #ecfeff;
+  --sidebar: 224 26% 9%;
+  --sidebar-foreground: 215 28% 86%;
+  --sidebar-primary: 170 46% 44%;
+  --sidebar-primary-foreground: 222 47% 7%;
+  --sidebar-accent: 224 18% 14%;
+  --sidebar-accent-foreground: 215 28% 86%;
+  --sidebar-border: 224 14% 22%;
+  --sidebar-ring: 170 46% 44%;
+
+  --selection-bg: #2dd4bf;
+  --selection-text: #042f2e;
+
+  --scrollbar-track: 224 22% 12%;
+  --scrollbar-thumb: 224 10% 34%;
+  --scrollbar-thumb-hover: 224 9% 44%;
 }
 
 @theme inline {
@@ -158,6 +175,8 @@
 
 html {
   scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--scrollbar-thumb)) hsl(var(--scrollbar-track));
 }
 
 body {
@@ -166,6 +185,8 @@ body {
   color: hsl(var(--foreground));
   font-family: var(--font-cleanframe-body), system-ui, sans-serif;
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 ::selection {
@@ -176,6 +197,36 @@ body {
 ::-moz-selection {
   background: var(--selection-bg);
   color: var(--selection-text);
+}
+
+/* Better native scrollbars for large data grids */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--scrollbar-thumb)) hsl(var(--scrollbar-track));
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: hsl(var(--scrollbar-track));
+}
+
+*::-webkit-scrollbar-thumb {
+  min-height: 44px;
+  border: 2px solid hsl(var(--scrollbar-track));
+  border-radius: 999px;
+  background: hsl(var(--scrollbar-thumb));
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--scrollbar-thumb-hover));
+}
+
+*::-webkit-scrollbar-corner {
+  background: hsl(var(--scrollbar-track));
 }
 
 button,

@@ -22,6 +22,11 @@ function getInitialTheme(): Theme {
 function applyTheme(theme: Theme) {
   document.documentElement.classList.toggle("dark", theme === "dark");
   window.localStorage.setItem("cleanframe-theme", theme);
+  window.dispatchEvent(
+    new CustomEvent("cleanframe-theme-change", {
+      detail: theme,
+    }),
+  );
 }
 
 export function ThemeToggle() {
@@ -29,12 +34,14 @@ export function ThemeToggle() {
 
   useEffect(() => {
     const initialTheme = getInitialTheme();
+
     setTheme(initialTheme);
     applyTheme(initialTheme);
   }, []);
 
   function toggleTheme() {
     const nextTheme = theme === "dark" ? "light" : "dark";
+
     setTheme(nextTheme);
     applyTheme(nextTheme);
   }
@@ -43,11 +50,15 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={toggleTheme}
-      aria-label="Toggle theme"
-      title="Toggle theme"
-      className="grid size-8 place-items-center rounded-md border border-border bg-muted text-muted-foreground transition hover:text-foreground"
+      aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      className="inline-flex size-9 items-center justify-center rounded-full border border-border/70 bg-background text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
     >
-      {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+      {theme === "dark" ? (
+        <Sun className="size-4" />
+      ) : (
+        <Moon className="size-4" />
+      )}
     </button>
   );
 }

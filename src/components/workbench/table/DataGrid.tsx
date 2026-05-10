@@ -11,7 +11,6 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Columns3,
-  Copy,
   EyeOff,
   Gauge,
   Rows3,
@@ -25,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { isMissingValue } from "@/lib/profile/detectMissingValues";
 import { isValueOutlier } from "@/lib/profile/detectOutliers";
+import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/store/workspaceStore";
 import type { ColumnType, DatasetRow } from "@/types/dataset";
 import type { ColumnProfile, DatasetProfile } from "@/types/profile";
@@ -32,6 +32,11 @@ import type { ColumnProfile, DatasetProfile } from "@/types/profile";
 type SortDirection = "asc" | "desc";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
+const TEXT_SIZE_STORAGE_KEY = "cleanframe-data-grid-text-size";
+const MIN_GRID_TEXT_SIZE = 10;
+const MAX_GRID_TEXT_SIZE = 16;
+const DEFAULT_GRID_TEXT_SIZE = 12;
 
 const NUMERIC_COLUMN_TYPES: ColumnType[] = [
   "integer",
@@ -42,6 +47,80 @@ const NUMERIC_COLUMN_TYPES: ColumnType[] = [
   "latitude",
   "longitude",
 ];
+
+function clampGridTextSize(value: number) {
+  return Math.min(MAX_GRID_TEXT_SIZE, Math.max(MIN_GRID_TEXT_SIZE, value));
+}
+
+function getGridTextClasses(textSize: number) {
+  if (textSize <= 10) {
+    return {
+      cell: "!text-[10px] leading-4",
+      header: "!text-[10px] leading-4",
+      rowNumber: "!text-[10px]",
+      cellPadding: "px-2 py-1.5",
+      headerPadding: "px-2 py-2",
+    };
+  }
+
+  if (textSize === 11) {
+    return {
+      cell: "!text-[11px] leading-4",
+      header: "!text-[10px] leading-4",
+      rowNumber: "!text-[10px]",
+      cellPadding: "px-2 py-1.5",
+      headerPadding: "px-2 py-2",
+    };
+  }
+
+  if (textSize === 13) {
+    return {
+      cell: "!text-[13px] leading-5",
+      header: "!text-[12px] leading-4",
+      rowNumber: "!text-[12px]",
+      cellPadding: "px-3 py-2.5",
+      headerPadding: "px-3 py-2.5",
+    };
+  }
+
+  if (textSize === 14) {
+    return {
+      cell: "!text-[14px] leading-5",
+      header: "!text-[13px] leading-5",
+      rowNumber: "!text-[13px]",
+      cellPadding: "px-3 py-2.5",
+      headerPadding: "px-3 py-2.5",
+    };
+  }
+
+  if (textSize === 15) {
+    return {
+      cell: "!text-[15px] leading-6",
+      header: "!text-[13px] leading-5",
+      rowNumber: "!text-[13px]",
+      cellPadding: "px-3.5 py-3",
+      headerPadding: "px-3.5 py-3",
+    };
+  }
+
+  if (textSize >= 16) {
+    return {
+      cell: "!text-[16px] leading-6",
+      header: "!text-[14px] leading-5",
+      rowNumber: "!text-[14px]",
+      cellPadding: "px-4 py-3",
+      headerPadding: "px-4 py-3",
+    };
+  }
+
+  return {
+    cell: "!text-[12px] leading-4",
+    header: "!text-[11px] leading-4",
+    rowNumber: "!text-[11px]",
+    cellPadding: "px-2.5 py-2",
+    headerPadding: "px-2.5 py-2",
+  };
+}
 
 function parseSortableNumber(value: unknown): number | null {
   const normalized = String(value ?? "")
@@ -69,6 +148,7 @@ function parseDisplayNumber(value: unknown): number | null {
 
 function formatNumberValue(value: unknown, maximumFractionDigits = 2): string {
   const parsed = parseDisplayNumber(value);
+
   if (parsed === null) return String(value ?? "");
 
   return parsed.toLocaleString(undefined, {
@@ -132,10 +212,12 @@ function formatCellValue({
   if (isMissingValue(value)) return "";
 
   const columnType = column?.type;
+
   if (!columnType) return String(value ?? "");
 
   if (columnType === "currency") {
     const parsed = parseDisplayNumber(value);
+
     if (parsed === null) return String(value ?? "");
 
     return parsed.toLocaleString(undefined, {
@@ -147,6 +229,7 @@ function formatCellValue({
 
   if (columnType === "percentage") {
     const parsed = parseDisplayNumber(value);
+
     if (parsed === null) return String(value ?? "");
 
     if (Math.abs(parsed) <= 1) {
@@ -161,14 +244,19 @@ function formatCellValue({
   }
 
   if (columnType === "integer") return formatNumberValue(value, 0);
+
   if (columnType === "decimal" || columnType === "number") {
     return formatNumberValue(value, 2);
   }
+
   if (columnType === "latitude" || columnType === "longitude") {
     return formatNumberValue(value, 5);
   }
+
   if (columnType === "date") return formatDateValue(value);
+
   if (columnType === "datetime") return formatDateTimeValue(value);
+
   if (columnType === "boolean") return formatBooleanValue(value);
 
   return String(value ?? "");
@@ -212,28 +300,42 @@ function includesSearchValue({
 
 function isOutlierCell(value: unknown, column?: ColumnProfile): boolean {
   if (!column?.outliers) return false;
+
   return isValueOutlier(value, column.outliers);
 }
 
 function getCellClassName({
   missing,
   outlier,
+  textSize,
 }: {
   missing: boolean;
   outlier: boolean;
+  textSize: number;
 }) {
-  const baseClass =
-    "max-w-[280px] truncate whitespace-nowrap border-r px-2.5 py-2 text-[11px] leading-4 last:border-r-0";
+  const textClasses = getGridTextClasses(textSize);
+
+  const baseClass = cn(
+    "max-w-[320px] truncate whitespace-nowrap border-r last:border-r-0",
+    textClasses.cell,
+    textClasses.cellPadding,
+  );
 
   if (missing) {
-    return `${baseClass} bg-amber-100 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100`;
+    return cn(
+      baseClass,
+      "bg-amber-100 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100",
+    );
   }
 
   if (outlier) {
-    return `${baseClass} bg-rose-100 text-rose-950 dark:bg-rose-950/40 dark:text-rose-100`;
+    return cn(
+      baseClass,
+      "bg-rose-100 text-rose-950 dark:bg-rose-950/40 dark:text-rose-100",
+    );
   }
 
-  return `${baseClass} text-foreground`;
+  return cn(baseClass, "text-foreground");
 }
 
 function formatCount(value: number): string {
@@ -270,14 +372,12 @@ function MetricChip({
         : "text-foreground";
 
   return (
-    <div className="inline-flex h-9 items-center gap-2 rounded-2xl border border-border/70 bg-background px-3 shadow-sm">
-      <span className="inline-flex size-5 items-center justify-center rounded-full border border-border/70 bg-muted/50 text-muted-foreground">
-        <Icon className="size-3.5" />
+    <div className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-muted/25 px-3 py-2">
+      <Icon className="size-3.5 text-muted-foreground" />
+      <span className="!text-[13px] text-muted-foreground">{label}</span>
+      <span className={cn("!text-[13px] font-bold", valueClassName)}>
+        {value}
       </span>
-      <span className="text-[11px] font-medium text-muted-foreground">
-        {label}
-      </span>
-      <span className={`text-sm font-bold ${valueClassName}`}>{value}</span>
     </div>
   );
 }
@@ -292,52 +392,42 @@ function HeaderMetrics({
   columnsWithMissingCount: number;
 }) {
   return (
-    <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <MetricChip
         icon={Rows3}
         label="Rows"
         value={formatCount(profile.rowCount)}
       />
+
       <MetricChip
         icon={Columns3}
         label="Columns"
         value={formatCount(profile.columnCount)}
       />
+
       <MetricChip
         icon={Sigma}
         label="Numeric"
         value={formatCount(numericColumnCount)}
       />
+
       <MetricChip
-        icon={TriangleAlert}
-        label="With missing"
+        icon={AlertTriangle}
+        label="Missing cols"
         value={formatCount(columnsWithMissingCount)}
         intent={columnsWithMissingCount > 0 ? "warning" : "default"}
       />
-      <MetricChip
-        icon={Copy}
-        label="Duplicates"
-        value={formatCount(profile.duplicateRowCount)}
-        intent={profile.duplicateRowCount > 0 ? "warning" : "default"}
-      />
-      <MetricChip
-        icon={AlertTriangle}
-        label="Warnings"
-        value={formatCount(profile.parseErrors.length)}
-        intent={profile.parseErrors.length > 0 ? "danger" : "default"}
-      />
 
-      <div className="inline-flex h-9 items-center gap-2 rounded-2xl border border-border/70 bg-background px-3 shadow-sm">
-        <span className="inline-flex size-5 items-center justify-center rounded-full border border-border/70 bg-muted/50 text-muted-foreground">
-          <Gauge className="size-3.5" />
-        </span>
-        <span className="text-[11px] font-medium text-muted-foreground">
-          Quality
-        </span>
-        <span className="text-sm font-bold text-foreground">
+      <div className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-muted/25 px-3 py-2">
+        <Gauge className="size-3.5 text-muted-foreground" />
+        <span className="!text-[13px] text-muted-foreground">Quality</span>
+        <span className="!text-[13px] font-bold text-foreground">
           {profile.qualityScore}/100
         </span>
-        <Badge variant={getQualityBadgeVariant(profile.qualityScore)}>
+        <Badge
+          variant={getQualityBadgeVariant(profile.qualityScore)}
+          className="h-5 rounded-lg px-1.5 !text-[11px]"
+        >
           {getQualityLabel(profile.qualityScore)}
         </Badge>
       </div>
@@ -353,9 +443,9 @@ function LegendItem({
   className: string;
 }) {
   return (
-    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-      <span className={`size-3 rounded-sm border ${className}`} />
-      <span>{label}</span>
+    <span className="inline-flex items-center gap-1.5 !text-[13px] text-muted-foreground">
+      <span className={cn("size-2 rounded-full", className)} />
+      {label}
     </span>
   );
 }
@@ -373,6 +463,7 @@ function CompactSelect({
   useEffect(() => {
     function handleDocumentClick(event: MouseEvent) {
       if (!dropdownRef.current) return;
+
       if (!dropdownRef.current.contains(event.target as Node)) {
         setOpen(false);
       }
@@ -381,28 +472,30 @@ function CompactSelect({
     if (!open) return;
 
     document.addEventListener("mousedown", handleDocumentClick);
+
     return () => {
       document.removeEventListener("mousedown", handleDocumentClick);
     };
   }, [open]);
 
   return (
-    <div ref={dropdownRef} className="relative inline-flex">
+    <div ref={dropdownRef} className="relative">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="inline-flex h-8 min-w-[108px] items-center justify-between gap-2 whitespace-nowrap rounded-xl border border-border bg-background px-3 text-xs font-semibold leading-none text-foreground shadow-sm transition hover:bg-muted focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
+        className="inline-flex h-8 min-w-[108px] items-center justify-between gap-2 whitespace-nowrap rounded-xl border border-border bg-background px-3 !text-[13px] font-semibold leading-none text-foreground shadow-sm transition hover:bg-muted focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
       >
-        <span className="whitespace-nowrap">{value} rows</span>
+        {value} rows
         <ChevronDown
-          className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
+          className={cn(
+            "size-3.5 text-muted-foreground transition",
+            open && "rotate-180",
+          )}
         />
       </button>
 
       {open ? (
-        <div className="absolute right-0 z-30 mt-9 w-[120px] overflow-hidden rounded-xl border border-border bg-background p-1 shadow-xl">
+        <div className="absolute right-0 top-10 z-30 w-36 rounded-2xl border border-border bg-background p-1.5 shadow-xl">
           {PAGE_SIZE_OPTIONS.map((size) => {
             const selected = size === value;
 
@@ -414,19 +507,91 @@ function CompactSelect({
                   onChange(size);
                   setOpen(false);
                 }}
-                className={`flex h-8 w-full items-center justify-between gap-2 whitespace-nowrap rounded-lg px-2.5 text-xs font-semibold transition ${
+                className={cn(
+                  "flex h-8 w-full items-center justify-between gap-2 whitespace-nowrap rounded-lg px-2.5 !text-[13px] font-semibold transition",
                   selected
                     ? "bg-primary/10 text-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
               >
-                <span className="whitespace-nowrap">{size} rows</span>
-                {selected ? <Check className="size-3.5 shrink-0" /> : null}
+                {size} rows
+                {selected ? <Check className="size-3.5" /> : null}
               </button>
             );
           })}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function TextSizeControl({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  const canDecrease = value > MIN_GRID_TEXT_SIZE;
+  const canIncrease = value < MAX_GRID_TEXT_SIZE;
+
+  function decrease() {
+    onChange(clampGridTextSize(value - 1));
+  }
+
+  function increase() {
+    onChange(clampGridTextSize(value + 1));
+  }
+
+  function reset() {
+    onChange(DEFAULT_GRID_TEXT_SIZE);
+  }
+
+  return (
+    <div className="inline-flex h-8 items-center rounded-xl border border-border bg-background p-1 shadow-sm">
+      <button
+        type="button"
+        onClick={decrease}
+        disabled={!canDecrease}
+        className={cn(
+          "flex h-6 min-w-8 items-center justify-center rounded-lg px-2 !text-[12px] font-bold leading-none transition",
+          canDecrease
+            ? "text-muted-foreground hover:bg-muted hover:text-foreground"
+            : "cursor-not-allowed text-muted-foreground/35",
+        )}
+        title={`Decrease grid text size. Minimum ${MIN_GRID_TEXT_SIZE}px.`}
+      >
+        A-
+      </button>
+
+      <button
+        type="button"
+        onClick={reset}
+        className={cn(
+          "flex h-6 min-w-[48px] items-center justify-center rounded-lg px-2 !text-[12px] font-bold leading-none transition",
+          value === DEFAULT_GRID_TEXT_SIZE
+            ? "bg-primary/10 text-foreground"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        )}
+        title={`Reset grid text size to ${DEFAULT_GRID_TEXT_SIZE}px.`}
+      >
+        {value}px
+      </button>
+
+      <button
+        type="button"
+        onClick={increase}
+        disabled={!canIncrease}
+        className={cn(
+          "flex h-6 min-w-8 items-center justify-center rounded-lg px-2 !text-[13px] font-bold leading-none transition",
+          canIncrease
+            ? "text-muted-foreground hover:bg-muted hover:text-foreground"
+            : "cursor-not-allowed text-muted-foreground/35",
+        )}
+        title={`Increase grid text size. Maximum ${MAX_GRID_TEXT_SIZE}px.`}
+      >
+        A+
+      </button>
     </div>
   );
 }
@@ -442,22 +607,15 @@ function FormattedValuesToggle({
     <button
       type="button"
       onClick={() => onChange(!checked)}
-      className={`inline-flex h-8 items-center gap-2 rounded-xl border px-3 text-xs font-semibold shadow-sm transition ${
+      className={cn(
+        "inline-flex h-8 items-center gap-2 rounded-xl border px-3 !text-[13px] font-semibold shadow-sm transition",
         checked
           ? "border-primary/30 bg-primary/10 text-foreground"
-          : "border-border/70 bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
-      }`}
+          : "border-border/70 bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
+      )}
       aria-pressed={checked}
     >
-      <span
-        className={`inline-flex size-4 items-center justify-center rounded border ${
-          checked
-            ? "border-primary bg-primary text-primary-foreground"
-            : "border-border bg-background"
-        }`}
-      >
-        {checked ? <Check className="size-3" /> : null}
-      </span>
+      {checked ? <Check className="size-3.5" /> : null}
       Formatted values
     </button>
   );
@@ -484,6 +642,7 @@ function ColumnsPopover({
   useEffect(() => {
     function handleDocumentClick(event: MouseEvent) {
       if (!popoverRef.current) return;
+
       if (!popoverRef.current.contains(event.target as Node)) {
         setOpen(false);
       }
@@ -492,6 +651,7 @@ function ColumnsPopover({
     if (!open) return;
 
     document.addEventListener("mousedown", handleDocumentClick);
+
     return () => {
       document.removeEventListener("mousedown", handleDocumentClick);
     };
@@ -499,89 +659,91 @@ function ColumnsPopover({
 
   return (
     <div ref={popoverRef} className="relative">
-      <Button
+      <button
         type="button"
-        variant="outline"
-        className="h-8 rounded-xl px-3 text-xs"
         onClick={() => setOpen((current) => !current)}
+        className="inline-flex h-8 items-center gap-2 rounded-xl border border-border bg-background px-3 !text-[13px] font-semibold text-foreground shadow-sm transition hover:bg-muted focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
       >
-        <Columns3 className="mr-1.5 size-3.5" />
+        <Columns3 className="size-3.5 text-muted-foreground" />
         Columns {visibleFields.length}/{fields.length}
         <ChevronDown
-          className={`ml-1 size-3.5 transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
+          className={cn(
+            "size-3.5 text-muted-foreground transition",
+            open && "rotate-180",
+          )}
         />
-      </Button>
+      </button>
 
       {open ? (
-        <div className="absolute left-0 z-30 mt-2 w-[320px] overflow-hidden rounded-2xl border border-border bg-background shadow-xl sm:left-auto sm:right-0">
-          <div className="border-b border-border/70 p-3">
-            <div className="text-sm font-bold text-foreground">
-              Visible columns
+        <div className="absolute right-0 top-10 z-30 w-[320px] rounded-2xl border border-border bg-background p-3 shadow-xl">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="!text-[13px] font-bold text-foreground">
+                Visible columns
+              </p>
+              <p className="mt-0.5 !text-[13px] leading-5 text-muted-foreground">
+                Choose which columns appear in the data grid.
+              </p>
             </div>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Choose which columns appear in the data grid.
-            </p>
+
+            <Badge variant="secondary" className="rounded-lg !text-[11px]">
+              {visibleFields.length}/{fields.length}
+            </Badge>
           </div>
 
-          <div className="p-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <div className="text-xs font-semibold text-muted-foreground">
-                Showing {visibleFields.length} of {fields.length}
-              </div>
+          <div className="mt-3 flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onShowAllColumns}
+              className="h-7 rounded-lg px-2 !text-[12px]"
+            >
+              Show all
+            </Button>
 
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  className="rounded-lg border border-border/70 px-2 py-1 text-[11px] font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                  onClick={onShowAllColumns}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onHideAllColumns}
+              className="h-7 rounded-lg px-2 !text-[12px]"
+            >
+              Hide all
+            </Button>
+          </div>
+
+          <div className="mt-3 max-h-72 space-y-1 overflow-auto pr-1">
+            {fields.map((field) => {
+              const checked = !hiddenColumnNames.includes(field);
+
+              return (
+                <label
+                  key={field}
+                  className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 transition hover:bg-muted"
                 >
-                  Show all
-                </button>
-                <button
-                  type="button"
-                  className="rounded-lg border border-border/70 px-2 py-1 text-[11px] font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                  onClick={onHideAllColumns}
-                >
-                  Hide all
-                </button>
-              </div>
-            </div>
-
-            <div className="max-h-72 space-y-1 overflow-auto pr-1">
-              {fields.map((field) => {
-                const checked = !hiddenColumnNames.includes(field);
-
-                return (
-                  <label
-                    key={field}
-                    className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 transition hover:bg-muted/60"
+                  <span
+                    className={cn(
+                      "flex size-4 items-center justify-center rounded border",
+                      checked
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-background",
+                    )}
                   >
-                    <span
-                      className={`inline-flex size-4 shrink-0 items-center justify-center rounded border ${
-                        checked
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border bg-background"
-                      }`}
-                    >
-                      {checked ? <Check className="size-3" /> : null}
-                    </span>
+                    {checked ? <Check className="size-3" /> : null}
+                  </span>
 
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => onToggleColumn(field)}
-                      className="sr-only"
-                    />
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => onToggleColumn(field)}
+                    className="sr-only"
+                  />
 
-                    <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                      {field}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
+                  <span className="min-w-0 truncate !text-[13px] font-medium text-foreground">
+                    {field}
+                  </span>
+                </label>
+              );
+            })}
           </div>
         </div>
       ) : null}
@@ -603,6 +765,27 @@ export function DataGrid() {
   const [pageSize, setPageSize] = useState(25);
   const [showFormattedValues, setShowFormattedValues] = useState(true);
   const [hiddenColumnNames, setHiddenColumnNames] = useState<string[]>([]);
+  const [gridTextSize, setGridTextSize] = useState(DEFAULT_GRID_TEXT_SIZE);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const savedTextSize = Number(
+      window.localStorage.getItem(TEXT_SIZE_STORAGE_KEY),
+    );
+
+    if (Number.isFinite(savedTextSize)) {
+      setGridTextSize(clampGridTextSize(savedTextSize));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    window.localStorage.setItem(TEXT_SIZE_STORAGE_KEY, String(gridTextSize));
+  }, [gridTextSize]);
+
+  const textClasses = getGridTextClasses(gridTextSize);
 
   const columnProfileByName = useMemo(() => {
     return new Map(columns.map((column) => [column.name, column]));
@@ -633,6 +816,7 @@ export function DataGrid() {
   useEffect(() => {
     setSortColumn((current) => {
       if (visibleFields.includes(current)) return current;
+
       return visibleFields[0] ?? "";
     });
   }, [visibleFields]);
@@ -659,7 +843,13 @@ export function DataGrid() {
         showFormattedValues,
       }),
     );
-  }, [rows, visibleFields, columnProfileByName, searchTerm, showFormattedValues]);
+  }, [
+    rows,
+    visibleFields,
+    columnProfileByName,
+    searchTerm,
+    showFormattedValues,
+  ]);
 
   const sortedRows = useMemo(() => {
     if (!sortColumn) return filteredRows;
@@ -669,7 +859,6 @@ export function DataGrid() {
     return [...filteredRows].sort((a, b) => {
       const rawA = a[sortColumn] ?? "";
       const rawB = b[sortColumn] ?? "";
-
       const column = columnProfileByName.get(sortColumn);
 
       const numberA =
@@ -714,6 +903,7 @@ export function DataGrid() {
 
   function getSortIndicator(column: string) {
     if (sortColumn !== column) return "↕";
+
     return sortDirection === "asc" ? "↑" : "↓";
   }
 
@@ -722,6 +912,7 @@ export function DataGrid() {
       if (current.includes(field)) {
         return current.filter((columnName) => columnName !== field);
       }
+
       return [...current, field];
     });
   }
@@ -737,23 +928,27 @@ export function DataGrid() {
   if (!workspace) return null;
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[1.35rem] border border-border bg-background shadow-sm">
-      <div className="shrink-0 border-b border-border/70 px-4 py-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex min-w-0 items-start gap-3">
-            <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-muted/35 text-foreground">
-              <Table2 className="size-5" />
-            </span>
-
-            <div className="min-w-0">
-              <h2 className="text-[15px] font-bold tracking-[-0.02em] text-foreground">
+    <section className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-[1.35rem] border border-border bg-background !text-[13px] shadow-sm">
+      <div className="shrink-0 border-b border-border/70 px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="!text-[13px] font-bold tracking-[-0.02em] text-foreground">
                 Data
               </h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Search, sort, paginate, and inspect every row in the working
-                dataset.
-              </p>
+
+              {hiddenColumnNames.length > 0 ? (
+                <Badge variant="secondary" className="rounded-lg !text-[11px]">
+                  <EyeOff className="mr-1 size-3" />
+                  {hiddenColumnNames.length} hidden
+                </Badge>
+              ) : null}
             </div>
+
+            <p className="mt-1 !text-[13px] leading-5 text-muted-foreground">
+              Search, sort, paginate, and inspect every row in the working
+              dataset.
+            </p>
           </div>
 
           <HeaderMetrics
@@ -762,11 +957,19 @@ export function DataGrid() {
             columnsWithMissingCount={columnsWithMissingCount}
           />
         </div>
-      </div>
 
-      <div className="shrink-0 border-b border-border/70 bg-muted/[0.18] px-4 py-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-1.5">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="relative min-w-[260px] flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search rows or columns"
+              className="h-9 w-full rounded-xl border border-border bg-background pl-10 pr-3 !text-[13px] outline-none transition placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
             <FormattedValuesToggle
               checked={showFormattedValues}
               onChange={setShowFormattedValues}
@@ -781,122 +984,97 @@ export function DataGrid() {
               onHideAllColumns={hideAllColumns}
             />
 
-            {hiddenColumnNames.length > 0 ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="h-8 rounded-xl px-3 text-xs"
-                onClick={showAllColumns}
-              >
-                <EyeOff className="mr-1.5 size-3.5" />
-                {hiddenColumnNames.length} hidden
-              </Button>
-            ) : null}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <LegendItem
-              label="Missing"
-              className="border-amber-300 bg-amber-100"
+            <TextSizeControl
+              value={gridTextSize}
+              onChange={setGridTextSize}
             />
-            <LegendItem
-              label="Outlier"
-              className="border-rose-300 bg-rose-100"
-            />
-          </div>
-        </div>
-      </div>
 
-      <div className="shrink-0 px-4 py-3">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative min-w-[280px] lg:max-w-[360px]">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search rows or columns"
-              className="h-9 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-sm outline-none transition placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20"
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
             <CompactSelect value={pageSize} onChange={setPageSize} />
+          </div>
+        </div>
 
-            <div className="rounded-xl border border-border/70 bg-muted/35 px-3 py-1.5 text-[11px] text-muted-foreground">
-              Showing{" "}
-              <span className="font-semibold text-foreground">
-                {totalRows === 0 ? 0 : startIndex + 1}
-              </span>{" "}
-              –{" "}
-              <span className="font-semibold text-foreground">
-                {Math.min(endIndex, totalRows)}
-              </span>{" "}
-              of{" "}
-              <span className="font-semibold text-foreground">
-                {totalRows}
-              </span>{" "}
-              matching rows from{" "}
-              <span className="font-semibold text-foreground">
-                {rows.length}
-              </span>
-              .
-            </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="!text-[13px] leading-5 text-muted-foreground">
+            Showing{" "}
+            <span className="font-bold text-foreground">
+              {totalRows === 0 ? 0 : startIndex + 1}
+            </span>{" "}
+            –{" "}
+            <span className="font-bold text-foreground">
+              {Math.min(endIndex, totalRows)}
+            </span>{" "}
+            of{" "}
+            <span className="font-bold text-foreground">
+              {totalRows.toLocaleString()}
+            </span>{" "}
+            matching rows from{" "}
+            <span className="font-bold text-foreground">
+              {rows.length.toLocaleString()}
+            </span>
+            .
+          </p>
 
-            <div className="rounded-xl border border-border/70 bg-muted/35 px-3 py-1.5 text-[11px] text-muted-foreground">
-              Columns{" "}
-              <span className="font-semibold text-foreground">
-                {visibleFields.length}
-              </span>{" "}
-              /{" "}
-              <span className="font-semibold text-foreground">
-                {fields.length}
-              </span>
-            </div>
+          <div className="flex items-center gap-3">
+            <LegendItem label="Missing" className="bg-amber-400" />
+            <LegendItem label="Outlier" className="bg-rose-400" />
           </div>
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto border-t border-border/70">
+      <div className="min-h-0 flex-1 overflow-auto bg-muted/[0.04]">
         {visibleFields.length === 0 ? (
-          <div className="flex h-full min-h-[320px] items-center justify-center p-6">
-            <div className="max-w-sm rounded-2xl border border-dashed border-border bg-muted/[0.18] p-6 text-center">
-              <p className="text-sm font-semibold text-foreground">
+          <div className="flex h-full items-center justify-center p-6">
+            <div className="max-w-sm rounded-2xl border border-dashed border-border bg-background p-6 text-center">
+              <Table2 className="mx-auto size-8 text-muted-foreground" />
+              <h3 className="mt-3 !text-[13px] font-bold text-foreground">
                 All columns are hidden
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              </h3>
+              <p className="mt-1 !text-[13px] leading-5 text-muted-foreground">
                 Open Columns and show at least one column to view the data grid.
               </p>
+
               <Button
                 type="button"
-                variant="outline"
-                className="mt-4 h-8 rounded-xl px-3 text-xs"
                 onClick={showAllColumns}
+                className="mt-4 h-8 rounded-xl px-3 !text-[13px]"
               >
                 Show all columns
               </Button>
             </div>
           </div>
         ) : (
-          <table className="min-w-full border-collapse text-left text-[11px]">
-            <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur">
-              <tr className="border-b border-border/70">
-                <th className="w-[56px] border-r px-2.5 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+          <table className="min-w-full table-auto border-separate border-spacing-0">
+            <thead className="sticky top-0 z-10 bg-background shadow-[0_1px_0_0_hsl(var(--border))]">
+              <tr>
+                <th
+                  className={cn(
+                    "w-[74px] border-r bg-muted/35 text-left font-bold uppercase tracking-[0.12em] text-muted-foreground",
+                    textClasses.header,
+                    textClasses.headerPadding,
+                  )}
+                >
                   #
                 </th>
 
                 {visibleFields.map((field) => (
                   <th
                     key={field}
-                    className="min-w-[140px] border-r px-2.5 py-2 last:border-r-0"
+                    className={cn(
+                      "min-w-[160px] border-r bg-muted/35 text-left last:border-r-0",
+                      textClasses.headerPadding,
+                    )}
                   >
                     <button
                       type="button"
                       onClick={() => toggleSort(field)}
-                      className="flex max-w-[220px] items-center gap-1.5 truncate text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground transition hover:text-foreground"
+                      className={cn(
+                        "flex max-w-[260px] items-center gap-1.5 truncate font-bold uppercase tracking-[0.12em] text-muted-foreground transition hover:text-foreground",
+                        textClasses.header,
+                      )}
                       title={field}
                     >
                       <span className="truncate">{field}</span>
-                      <span className="shrink-0 text-[9px]">
+                      <span className="shrink-0">
                         {getSortIndicator(field)}
                       </span>
                     </button>
@@ -910,18 +1088,30 @@ export function DataGrid() {
                 <tr>
                   <td
                     colSpan={visibleFields.length + 1}
-                    className="px-4 py-12 text-center text-xs text-muted-foreground"
+                    className="px-4 py-10 text-center"
                   >
-                    No rows match your search.
+                    <TriangleAlert className="mx-auto size-7 text-muted-foreground" />
+                    <p className="mt-3 !text-[13px] font-bold text-foreground">
+                      No rows match your search.
+                    </p>
+                    <p className="mt-1 !text-[13px] text-muted-foreground">
+                      Try a different keyword or show more columns.
+                    </p>
                   </td>
                 </tr>
               ) : (
                 visibleRows.map((row, rowIndex) => (
                   <tr
                     key={`${startIndex + rowIndex}-${JSON.stringify(row)}`}
-                    className="border-b border-border/70 transition hover:bg-muted/30"
+                    className="border-b transition hover:bg-muted/35"
                   >
-                    <td className="w-[56px] border-r px-2.5 py-2 text-[10px] font-semibold text-muted-foreground">
+                    <td
+                      className={cn(
+                        "border-r border-b bg-muted/20 font-mono text-muted-foreground",
+                        textClasses.rowNumber,
+                        textClasses.cellPadding,
+                      )}
+                    >
                       {(startIndex + rowIndex + 1).toLocaleString()}
                     </td>
 
@@ -930,6 +1120,7 @@ export function DataGrid() {
                       const column = columnProfileByName.get(field);
                       const missing = isMissingValue(value);
                       const outlier = !missing && isOutlierCell(value, column);
+
                       const displayValue = formatCellValue({
                         value,
                         column,
@@ -938,17 +1129,25 @@ export function DataGrid() {
 
                       return (
                         <td
-                          key={field}
-                          className={getCellClassName({ missing, outlier })}
-                          title={
-                            showFormattedValues
-                              ? `Formatted: ${displayValue}\nRaw: ${String(
-                                  value ?? "",
-                                )}`
-                              : String(value ?? "")
-                          }
+                          key={`${startIndex + rowIndex}-${field}`}
+                          title={missing ? "Missing" : displayValue}
+                          className={cn(
+                            "border-b",
+                            getCellClassName({
+                              missing,
+                              outlier,
+                              textSize: gridTextSize,
+                            }),
+                          )}
                         >
-                          {missing ? "Missing" : displayValue}
+                          {missing ? (
+                            <span className="inline-flex items-center gap-1.5 font-semibold">
+                              <AlertTriangle className="size-3.5" />
+                              Missing
+                            </span>
+                          ) : (
+                            displayValue
+                          )}
                         </td>
                       );
                     })}
@@ -961,23 +1160,24 @@ export function DataGrid() {
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border/70 px-4 py-3">
-        <div className="text-xs text-muted-foreground">
+        <p className="!text-[13px] text-muted-foreground">
           Page{" "}
-          <span className="font-semibold text-foreground">
+          <span className="font-bold text-foreground">
             {currentPageIndex + 1}
           </span>{" "}
           of{" "}
-          <span className="font-semibold text-foreground">{totalPages}</span>
-        </div>
+          <span className="font-bold text-foreground">
+            {totalPages.toLocaleString()}
+          </span>
+        </p>
 
         <div className="flex items-center gap-1.5">
           <Button
             type="button"
             variant="outline"
-            size="icon"
             onClick={() => setPageIndex(0)}
             disabled={currentPageIndex === 0}
-            className="size-8 rounded-xl"
+            className="size-8 rounded-xl p-0"
           >
             <ChevronsLeft className="size-4" />
           </Button>
@@ -985,12 +1185,11 @@ export function DataGrid() {
           <Button
             type="button"
             variant="outline"
-            size="icon"
             onClick={() =>
               setPageIndex((current) => Math.max(0, current - 1))
             }
             disabled={currentPageIndex === 0}
-            className="size-8 rounded-xl"
+            className="size-8 rounded-xl p-0"
           >
             <ChevronLeft className="size-4" />
           </Button>
@@ -998,12 +1197,11 @@ export function DataGrid() {
           <Button
             type="button"
             variant="outline"
-            size="icon"
             onClick={() =>
               setPageIndex((current) => Math.min(totalPages - 1, current + 1))
             }
             disabled={currentPageIndex >= totalPages - 1}
-            className="size-8 rounded-xl"
+            className="size-8 rounded-xl p-0"
           >
             <ChevronRight className="size-4" />
           </Button>
@@ -1011,10 +1209,9 @@ export function DataGrid() {
           <Button
             type="button"
             variant="outline"
-            size="icon"
             onClick={() => setPageIndex(totalPages - 1)}
             disabled={currentPageIndex >= totalPages - 1}
-            className="size-8 rounded-xl"
+            className="size-8 rounded-xl p-0"
           >
             <ChevronsRight className="size-4" />
           </Button>

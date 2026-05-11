@@ -13,6 +13,15 @@ import { detectOutliers } from "@/lib/profile/detectOutliers";
 import type { OutlierConfig } from "@/types/outlier";
 import { DEFAULT_OUTLIER_CONFIG } from "@/types/outlier";
 import { isMissingValue } from "@/lib/profile/detectMissingValues";
+import {
+  parseConfiguredDate,
+  parseConfiguredNumber,
+} from "@/lib/settings/valueParsers";
+import {
+  DEFAULT_CLEANFRAME_SETTINGS,
+  type CleanframeSettings,
+} from "@/types/cleanframeSettings";
+import { loadCleanframeSettings } from "@/lib/settings/cleanframeSettings";
 
 type ProfileDatasetOptions = {
   fileName: string;
@@ -20,6 +29,7 @@ type ProfileDatasetOptions = {
   parseErrors?: string[];
   outlierConfig?: OutlierConfig;
   columnTypeOverrides?: Partial<Record<string, ColumnType>>;
+  settings?: Partial<CleanframeSettings>;
 };
 
 const NUMERIC_PROFILE_TYPES: ColumnType[] = [
@@ -60,28 +70,41 @@ export function createEmptyColumnTypeCounts(): Record<ColumnType, number> {
   };
 }
 
-function parseNumber(value: unknown): number | null {
-  if (isMissingValue(value)) return null;
+function resolveProfileSettings(settings?: Partial<CleanframeSettings>) {
+  if (settings) {
+    return {
+      ...DEFAULT_CLEANFRAME_SETTINGS,
+      ...settings,
+    };
+  }
 
-  const normalized = String(value)
-    .trim()
-    .replaceAll(",", "")
-    .replace("%", "")
-    .replace(/^[^\d.-]+/, "");
-
-  const parsed = Number(normalized);
-
-  return Number.isFinite(parsed) ? parsed : null;
+  return loadCleanframeSettings();
 }
 
-function getTopValues(values: unknown[], limit = 5): TopValue[] {
+function getProfileRows(rows: DatasetRow[], profileSampleSize: CleanframeSettings["profileSampleSize"]) {
+  if (profileSampleSize === "full") return rows;
+
+  return rows.slice(0, Number(profileSampleSize));
+}
+
+function parseNumber(value: unknown, settings: CleanframeSettings): number | null {
+  return parseConfiguredNumber(value, {
+    numberParsingMode: settings.numberParsingMode,
+    emptyValueTokens: settings.emptyValueTokens,
+  });
+}
+
+function getTopValues(
+  values: unknown[],
+  settings: CleanframeSettings,
+  limit = 5,
+): TopValue[] {
   const counts = new Map<string, number>();
 
   for (const value of values) {
-    if (isMissingValue(value)) continue;
+    if (isMissingValue(value, settings.emptyValueTokens)) continue;
 
     const normalized = String(value).trim();
-
     counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
   }
 
@@ -91,18 +114,24 @@ function getTopValues(values: unknown[], limit = 5): TopValue[] {
     .map(([value, count]) => ({ value, count }));
 }
 
-function calculateDateSummary(values: unknown[]): DateSummary | undefined {
+function calculateDateSummary(
+  values: unknown[],
+  settings: CleanframeSettings,
+): DateSummary | undefined {
   const parsedDates = values
-    .filter((value) => !isMissingValue(value))
+    .filter((value) => !isMissingValue(value, settings.emptyValueTokens))
     .map((value) => {
       const rawValue = String(value).trim();
-      const timestamp = Date.parse(rawValue);
+      const parsedDate = parseConfiguredDate(rawValue, {
+        dateParsingMode: settings.dateParsingMode,
+        emptyValueTokens: settings.emptyValueTokens,
+      });
 
-      if (Number.isNaN(timestamp)) return null;
+      if (!parsedDate) return null;
 
       return {
         rawValue,
-        timestamp,
+        timestamp: parsedDate.getTime(),
       };
     })
     .filter(
@@ -122,9 +151,10 @@ function calculateDateSummary(values: unknown[]): DateSummary | undefined {
 function countRowsWithMissingValues(
   rows: DatasetRow[],
   fields: string[],
+  settings: CleanframeSettings,
 ): number {
   return rows.filter((row) =>
-    fields.some((field) => isMissingValue(row[field])),
+    fields.some((field) => isMissingValue(row[field], settings.emptyValueTokens)),
   ).length;
 }
 
@@ -133,9 +163,7 @@ function buildRecommendations(
   duplicateRowCount: number,
 ): string[] {
   const recommendations: string[] = [];
-
   const missingColumns = columns.filter((column) => column.missingCount > 0);
-
   const outlierColumns = columns.filter(
     (column) => column.outliers && column.outliers.count > 0,
   );
@@ -152,7 +180,7 @@ function buildRecommendations(
 
   if (outlierColumns.length > 0) {
     recommendations.push(
-      "Review numeric outliers detected by the IQR method before deciding whether to keep or remove them.",
+      "Review numeric outliers detected by the selected method before deciding whether to keep or remove them.",
     );
   }
 
@@ -174,47 +202,52 @@ export function profileDataset(
   fields: string[],
   options: ProfileDatasetOptions,
 ): DatasetProfile {
-
+  const settings = resolveProfileSettings(options.settings);
   const outlierConfig = options.outlierConfig ?? DEFAULT_OUTLIER_CONFIG;
-
+  const profileRows = getProfileRows(rows, settings.profileSampleSize);
   const duplicateRowCount = detectDuplicateRows(rows, fields);
-  const rowsWithMissingValuesCount = countRowsWithMissingValues(rows, fields);
+  const rowsWithMissingValuesCount = countRowsWithMissingValues(
+    rows,
+    fields,
+    settings,
+  );
 
   let totalMissingValues = 0;
   let totalOutliers = 0;
   let numericValueCount = 0;
-
   const columnTypeCounts = createEmptyColumnTypeCounts();
 
   const columns: ColumnProfile[] = fields.map((field) => {
     const values = rows.map((row) => row[field]);
-    const missingCount = values.filter(isMissingValue).length;
-    const presentValues = values.filter((value) => !isMissingValue(value));
-
-    const type = options.columnTypeOverrides?.[field] ?? detectColumnType(field, values);
+    const sampledValues = profileRows.map((row) => row[field]);
+    const missingCount = values.filter((value) =>
+      isMissingValue(value, settings.emptyValueTokens),
+    ).length;
+    const presentValues = values.filter(
+      (value) => !isMissingValue(value, settings.emptyValueTokens),
+    );
+    const type =
+      options.columnTypeOverrides?.[field] ??
+      detectColumnType(field, sampledValues, settings);
 
     totalMissingValues += missingCount;
     columnTypeCounts[type] += 1;
 
     const shouldCalculateNumericStats = NUMERIC_PROFILE_TYPES.includes(type);
     const shouldCalculateDateStats = DATE_PROFILE_TYPES.includes(type);
-
     const numericValues = shouldCalculateNumericStats
       ? values
-          .map(parseNumber)
+          .map((value) => parseNumber(value, settings))
           .filter((value): value is number => value !== null)
       : [];
-
     const numericSummary = shouldCalculateNumericStats
       ? calculateNumericStats(numericValues)
       : undefined;
-
     const outliers = shouldCalculateNumericStats
-  ? detectOutliers(numericValues, outlierConfig, field)
-  : undefined;
-
+      ? detectOutliers(numericValues, outlierConfig, field)
+      : undefined;
     const dateSummary = shouldCalculateDateStats
-      ? calculateDateSummary(values)
+      ? calculateDateSummary(values, settings)
       : undefined;
 
     if (shouldCalculateNumericStats) {
@@ -229,10 +262,8 @@ export function profileDataset(
       missingCount,
       missingPercentage:
         values.length === 0 ? 0 : (missingCount / values.length) * 100,
-      uniqueCount: new Set(
-        presentValues.map((value) => String(value).trim()),
-      ).size,
-      topValues: getTopValues(values),
+      uniqueCount: new Set(presentValues.map((value) => String(value).trim())).size,
+      topValues: getTopValues(values, settings),
       numericSummary,
       dateSummary,
       outliers,

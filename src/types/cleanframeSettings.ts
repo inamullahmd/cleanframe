@@ -1,6 +1,12 @@
 import type { CsvEncoding } from "@/types/settings";
 
-export type CsvDelimiter = "auto" | "comma" | "semicolon" | "tab" | "pipe";
+export type CsvDelimiter =
+  | "auto"
+  | "comma"
+  | "semicolon"
+  | "tab"
+  | "pipe"
+  | "custom";
 export type DateParsingMode = "auto" | "us" | "iso" | "eu";
 export type NumberParsingMode = "balanced" | "strict" | "aggressive";
 export type ColumnNameFormat =
@@ -14,7 +20,7 @@ export type ProfileSampleSize = "full" | "5000" | "10000" | "25000";
 export type DetectionStrictness = "strict" | "balanced" | "aggressive";
 export type ValueDisplayMode = "formatted" | "raw";
 export type RowDensity = "compact" | "comfortable";
-export type PageSize = "25" | "50" | "100";
+export type PageSize = "10" | "25" | "50" | "100";
 export type ChartType = "bar" | "line" | "area" | "pie" | "scatter" | "histogram";
 export type ChartAggregation = "count" | "sum" | "average" | "median" | "min" | "max";
 export type ChartColumnPool =
@@ -33,16 +39,11 @@ export type FileNamingPattern =
   | "dataset_timestamp"
   | "dataset_only"
   | "cleanframe_timestamp";
-export type LandingModule =
-  | "upload"
-  | "schema"
-  | "data"
-  | "clean"
-  | "history"
-  | "charts";
+export type LandingModule = "upload" | "schema" | "data" | "clean" | "history" | "charts" | "export";
 
 export type CleanframeSettings = {
   delimiter: CsvDelimiter;
+  customDelimiter: string;
   hasHeaderRow: boolean;
   trimCellsOnImport: boolean;
   emptyValueTokens: string;
@@ -64,6 +65,13 @@ export type CleanframeSettings = {
   rowDensity: RowDensity;
   defaultPageSize: PageSize;
   defaultGridTextSize: number;
+  numberDecimalPlaces: number;
+  currencyDecimalPlaces: number;
+  percentageDecimalPlaces: number;
+  coordinateDecimalPlaces: number;
+  currencyCode: string;
+  trueValueTokens: string;
+  falseValueTokens: string;
   highlightMissingValues: boolean;
   highlightOutliers: boolean;
   stickyTableHeader: boolean;
@@ -83,6 +91,7 @@ export type CleanframeSettings = {
   textNormalization: boolean;
   casingCleanup: CasingCleanup;
   autoHistoryBeforeCleaning: boolean;
+  defaultUnknownFillValue: string;
   confirmDestructiveActions: boolean;
   previewCleaningChanges: boolean;
 
@@ -110,6 +119,7 @@ export type CleanframeSettings = {
 
 export const DEFAULT_CLEANFRAME_SETTINGS: CleanframeSettings = {
   delimiter: "auto",
+  customDelimiter: "",
   hasHeaderRow: true,
   trimCellsOnImport: true,
   emptyValueTokens: "NA, N/A, null, NULL, -, empty",
@@ -131,6 +141,13 @@ export const DEFAULT_CLEANFRAME_SETTINGS: CleanframeSettings = {
   rowDensity: "compact",
   defaultPageSize: "50",
   defaultGridTextSize: 12,
+  numberDecimalPlaces: 2,
+  currencyDecimalPlaces: 2,
+  percentageDecimalPlaces: 2,
+  coordinateDecimalPlaces: 5,
+  currencyCode: "USD",
+  trueValueTokens: "true, 1, yes, y",
+  falseValueTokens: "false, 0, no, n",
   highlightMissingValues: true,
   highlightOutliers: true,
   stickyTableHeader: true,
@@ -150,6 +167,7 @@ export const DEFAULT_CLEANFRAME_SETTINGS: CleanframeSettings = {
   textNormalization: false,
   casingCleanup: "none",
   autoHistoryBeforeCleaning: true,
+  defaultUnknownFillValue: "Unknown",
   confirmDestructiveActions: true,
   previewCleaningChanges: true,
 
@@ -168,12 +186,13 @@ export const DEFAULT_CLEANFRAME_SETTINGS: CleanframeSettings = {
   fileNamingPattern: "dataset_timestamp",
   exportCsvEncoding: "utf-8",
 
-  defaultLandingModule: "upload",
+  defaultLandingModule: "schema",
   compactMode: true,
   showOnboardingHints: false,
   persistWorkspaceLocally: false,
   autoSaveWorkspaceState: true,
 };
 
-export const CLEANFRAME_SETTINGS_STORAGE_KEY = "cleanframe-settings-v2";
+export const CLEANFRAME_SETTINGS_STORAGE_KEY = "cleanframe-settings-v3";
+export const LEGACY_CLEANFRAME_SETTINGS_STORAGE_KEY = "cleanframe-settings-v2";
 export const CLEANFRAME_SETTINGS_CHANGE_EVENT = "cleanframe-settings-change";

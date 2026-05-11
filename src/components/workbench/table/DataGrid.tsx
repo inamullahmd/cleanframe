@@ -24,6 +24,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCleanframeSettings } from "@/hooks/useCleanframeSettings";
 import { isMissingValue } from "@/lib/profile/detectMissingValues";
+import {
+  formatConfiguredBoolean,
+  getGridNumberDecimalPlaces,
+  parseConfiguredDate,
+  parseConfiguredNumber,
+} from "@/lib/settings/valueParsers";
+import type { CleanframeSettings } from "@/types/cleanframeSettings";
 import { isValueOutlier } from "@/lib/profile/detectOutliers";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/store/workspaceStore";
@@ -123,88 +130,123 @@ function getGridTextClasses(textSize: number, rowDensity: "compact" | "comfortab
   };
 }
 
-function parseSortableNumber(value: unknown): number | null {
-  const normalized = String(value ?? "")
-    .trim()
-    .replaceAll(",", "")
-    .replace("%", "")
-    .replace(/^[^\d.-]+/, "");
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
+function parseSortableNumber(
+  value: unknown,
+  settings: CleanframeSettings,
+): number | null {
+  return parseConfiguredNumber(value, {
+    numberParsingMode: settings.numberParsingMode,
+    emptyValueTokens: settings.emptyValueTokens,
+  });
 }
 
-function parseDisplayNumber(value: unknown): number | null {
-  if (isMissingValue(value)) return null;
-  const normalized = String(value ?? "")
-    .trim()
-    .replaceAll(",", "")
-    .replace("%", "")
-    .replace(/^[^\d.-]+/, "");
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
+function parseDisplayNumber(
+  value: unknown,
+  settings: CleanframeSettings,
+): number | null {
+  return parseConfiguredNumber(value, {
+    numberParsingMode: settings.numberParsingMode,
+    emptyValueTokens: settings.emptyValueTokens,
+  });
 }
 
-function formatNumberValue(value: unknown, maximumFractionDigits = 2): string {
-  const parsed = parseDisplayNumber(value);
+function formatNumberValue(
+  value: unknown,
+  settings: CleanframeSettings,
+  maximumFractionDigits = 2,
+): string {
+  const parsed = parseDisplayNumber(value, settings);
   if (parsed === null) return String(value ?? "");
   return parsed.toLocaleString(undefined, { maximumFractionDigits });
 }
 
-function formatDateValue(value: unknown): string {
-  if (isMissingValue(value)) return "";
+function formatDateValue(value: unknown, settings: CleanframeSettings): string {
+  if (isMissingValue(value, settings.emptyValueTokens)) return "";
   const rawValue = String(value ?? "").trim();
-  const parsedDate = new Date(rawValue);
-  if (Number.isNaN(parsedDate.getTime())) return rawValue;
-  return parsedDate.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
+  const parsedDate = parseConfiguredDate(rawValue, {
+    dateParsingMode: settings.dateParsingMode,
+    emptyValueTokens: settings.emptyValueTokens,
+  });
+  if (!parsedDate) return rawValue;
+  return parsedDate.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
 }
 
-function formatDateTimeValue(value: unknown): string {
-  if (isMissingValue(value)) return "";
+function formatDateTimeValue(value: unknown, settings: CleanframeSettings): string {
+  if (isMissingValue(value, settings.emptyValueTokens)) return "";
   const rawValue = String(value ?? "").trim();
-  const parsedDate = new Date(rawValue);
-  if (Number.isNaN(parsedDate.getTime())) return rawValue;
-  return parsedDate.toLocaleString(undefined, { year: "numeric", month: "short", day: "2-digit", hour: "numeric", minute: "2-digit" });
-}
-
-function formatBooleanValue(value: unknown): string {
-  if (isMissingValue(value)) return "";
-  const normalized = String(value ?? "").trim().toLowerCase();
-  if (["true", "1", "yes", "y"].includes(normalized)) return "Yes";
-  if (["false", "0", "no", "n"].includes(normalized)) return "No";
-  return String(value ?? "");
+  const parsedDate = parseConfiguredDate(rawValue, {
+    dateParsingMode: settings.dateParsingMode,
+    emptyValueTokens: settings.emptyValueTokens,
+  });
+  if (!parsedDate) return rawValue;
+  return parsedDate.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function formatCellValue({
   value,
   column,
   showFormattedValues,
+  settings,
 }: {
   value: unknown;
   column?: ColumnProfile;
   showFormattedValues: boolean;
+  settings: CleanframeSettings;
 }): string {
   if (!showFormattedValues) return String(value ?? "");
-  if (isMissingValue(value)) return "";
+  if (isMissingValue(value, settings.emptyValueTokens)) return "";
   const columnType = column?.type;
   if (!columnType) return String(value ?? "");
 
+  const decimals = getGridNumberDecimalPlaces(settings);
+
   if (columnType === "currency") {
-    const parsed = parseDisplayNumber(value);
+    const parsed = parseDisplayNumber(value, settings);
     if (parsed === null) return String(value ?? "");
-    return parsed.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+    try {
+      return parsed.toLocaleString(undefined, {
+        style: "currency",
+        currency: settings.currencyCode || "USD",
+        maximumFractionDigits: decimals.currency,
+      });
+    } catch {
+      return parsed.toLocaleString(undefined, {
+        maximumFractionDigits: decimals.currency,
+      });
+    }
   }
   if (columnType === "percentage") {
-    const parsed = parseDisplayNumber(value);
+    const parsed = parseDisplayNumber(value, settings);
     if (parsed === null) return String(value ?? "");
-    if (Math.abs(parsed) <= 1) return `${(parsed * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
-    return `${parsed.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
+    if (Math.abs(parsed) <= 1) {
+      return `${(parsed * 100).toLocaleString(undefined, {
+        maximumFractionDigits: decimals.percentage,
+      })}%`;
+    }
+    return `${parsed.toLocaleString(undefined, {
+      maximumFractionDigits: decimals.percentage,
+    })}%`;
   }
-  if (columnType === "integer") return formatNumberValue(value, 0);
-  if (columnType === "decimal" || columnType === "number") return formatNumberValue(value, 2);
-  if (columnType === "latitude" || columnType === "longitude") return formatNumberValue(value, 5);
-  if (columnType === "date") return formatDateValue(value);
-  if (columnType === "datetime") return formatDateTimeValue(value);
-  if (columnType === "boolean") return formatBooleanValue(value);
+  if (columnType === "integer") return formatNumberValue(value, settings, 0);
+  if (columnType === "decimal" || columnType === "number") {
+    return formatNumberValue(value, settings, decimals.number);
+  }
+  if (columnType === "latitude" || columnType === "longitude") {
+    return formatNumberValue(value, settings, decimals.coordinate);
+  }
+  if (columnType === "date") return formatDateValue(value, settings);
+  if (columnType === "datetime") return formatDateTimeValue(value, settings);
+  if (columnType === "boolean") return formatConfiguredBoolean(value, settings);
   return String(value ?? "");
 }
 
@@ -214,19 +256,21 @@ function includesSearchValue({
   columnProfileByName,
   searchTerm,
   showFormattedValues,
+  settings,
 }: {
   row: DatasetRow;
   fields: string[];
   columnProfileByName: Map<string, ColumnProfile>;
   searchTerm: string;
   showFormattedValues: boolean;
+  settings: CleanframeSettings;
 }) {
   if (!searchTerm) return true;
   const normalizedSearch = searchTerm.toLowerCase();
   return fields.some((field) => {
     const columnMatches = field.toLowerCase().includes(normalizedSearch);
     const rawValueMatches = String(row[field] ?? "").toLowerCase().includes(normalizedSearch);
-    const formattedValueMatches = formatCellValue({ value: row[field], column: columnProfileByName.get(field), showFormattedValues }).toLowerCase().includes(normalizedSearch);
+    const formattedValueMatches = formatCellValue({ value: row[field], column: columnProfileByName.get(field), showFormattedValues, settings }).toLowerCase().includes(normalizedSearch);
     return columnMatches || rawValueMatches || formattedValueMatches;
   });
 }
@@ -466,7 +510,7 @@ export function DataGrid() {
     setPageIndex(0);
   }, [searchTerm, sortColumn, sortDirection, pageSize, rows, visibleFields, showFormattedValues]);
 
-  const filteredRows = useMemo(() => rows.filter((row) => includesSearchValue({ row, fields: visibleFields, columnProfileByName, searchTerm, showFormattedValues })), [rows, visibleFields, columnProfileByName, searchTerm, showFormattedValues]);
+  const filteredRows = useMemo(() => rows.filter((row) => includesSearchValue({ row, fields: visibleFields, columnProfileByName, searchTerm, showFormattedValues, settings })), [rows, visibleFields, columnProfileByName, searchTerm, showFormattedValues, settings]);
 
   const sortedRows = useMemo(() => {
     if (!sortColumn) return filteredRows;
@@ -475,12 +519,12 @@ export function DataGrid() {
       const rawA = a[sortColumn] ?? "";
       const rawB = b[sortColumn] ?? "";
       const column = columnProfileByName.get(sortColumn);
-      const numberA = column && NUMERIC_COLUMN_TYPES.includes(column.type) ? parseSortableNumber(rawA) : null;
-      const numberB = column && NUMERIC_COLUMN_TYPES.includes(column.type) ? parseSortableNumber(rawB) : null;
+      const numberA = column && NUMERIC_COLUMN_TYPES.includes(column.type) ? parseSortableNumber(rawA, settings) : null;
+      const numberB = column && NUMERIC_COLUMN_TYPES.includes(column.type) ? parseSortableNumber(rawB, settings) : null;
       if (numberA !== null && numberB !== null) return (numberA - numberB) * directionMultiplier;
       return String(rawA).localeCompare(String(rawB), undefined, { numeric: true, sensitivity: "base" }) * directionMultiplier;
     });
-  }, [filteredRows, sortColumn, sortDirection, columnProfileByName]);
+  }, [filteredRows, sortColumn, sortDirection, columnProfileByName, settings]);
 
   const totalRows = sortedRows.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
@@ -580,9 +624,9 @@ export function DataGrid() {
                   {visibleFields.map((field) => {
                     const value = row[field];
                     const column = columnProfileByName.get(field);
-                    const missing = isMissingValue(value);
+                    const missing = isMissingValue(value, settings.emptyValueTokens);
                     const outlier = !missing && isOutlierCell(value, column);
-                    const displayValue = formatCellValue({ value, column, showFormattedValues });
+                    const displayValue = formatCellValue({ value, column, showFormattedValues, settings });
                     return (
                       <td key={`${startIndex + rowIndex}-${field}`} title={missing ? "Missing" : displayValue} className={cn("border-b", getCellClassName({ missing, outlier, textSize: gridTextSize, rowDensity: settings.rowDensity, highlightMissing: settings.highlightMissingValues, highlightOutliers: settings.highlightOutliers }))}>
                         {missing && settings.highlightMissingValues ? <span className="inline-flex items-center gap-1.5 font-semibold"><AlertTriangle className="size-3.5" />Missing</span> : displayValue}

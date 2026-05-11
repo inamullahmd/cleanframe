@@ -13,37 +13,41 @@ import { LoadSampleButton } from "@/components/workbench/sample/LoadSampleButton
 const capabilities = [
   {
     title: "Profile",
-    description: "Detect column types, missing values, duplicates, outliers, and quality issues.",
+    description:
+      "Detect column types, missing values, duplicates, outliers, and quality issues.",
     icon: FileSpreadsheet,
   },
   {
     title: "Correct",
-    description: "Rename columns, override inferred types, and prepare a cleaner schema.",
+    description:
+      "Rename columns, override inferred types, and prepare a cleaner schema.",
     icon: SlidersHorizontal,
   },
   {
     title: "Explore",
-    description: "Search, sort, inspect rows, switch formatted/raw values, and control visible columns.",
+    description:
+      "Search, sort, inspect rows, switch formatted/raw values, and control visible columns.",
     icon: Database,
   },
   {
     title: "Visualize",
-    description: "Build ECharts visuals from compatible columns, aggregations, and display options.",
+    description:
+      "Build ECharts visuals from compatible columns, aggregations, and display options.",
     icon: BarChart3,
   },
 ];
 
 export function EmptyWorkspace() {
   return (
-    <section className="flex h-full min-h-0 items-center justify-center overflow-auto rounded-[1.35rem] bg-background !text-[13px]">
-      <div className="mx-auto grid w-full max-w-[1180px] gap-5 px-4 py-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <div className="flex min-h-[620px] flex-col justify-center rounded-[1.6rem] bg-muted/[0.08] p-6 md:p-8">
+    <section className="min-h-full rounded-[1.35rem] bg-background !text-[13px] lg:flex lg:h-full lg:min-h-0 lg:items-center lg:justify-center lg:overflow-auto">
+      <div className="mx-auto grid w-full max-w-[1180px] gap-5 px-3 py-4 sm:px-4 sm:py-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="flex min-h-0 flex-col justify-start rounded-[1.35rem] bg-muted/[0.08] p-5 sm:p-6 md:p-8 lg:min-h-[620px] lg:justify-center lg:rounded-[1.6rem]">
           <div className="inline-flex w-fit items-center gap-2 rounded-full bg-primary/10 px-3 py-1.5 !text-[13px] font-bold text-primary">
             <Sparkles className="size-3.5" />
             Cleanframe CSV Workbench
           </div>
 
-          <h1 className="mt-5 max-w-3xl text-3xl font-bold tracking-[-0.05em] text-foreground md:text-5xl">
+          <h1 className="mt-5 max-w-3xl text-3xl font-bold tracking-[-0.05em] text-foreground sm:text-4xl md:text-5xl">
             Turn messy CSV files into trusted, chart-ready datasets.
           </h1>
 
@@ -53,12 +57,23 @@ export function EmptyWorkspace() {
             exportable charts from one focused workspace.
           </p>
 
+          <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-left lg:hidden">
+            <p className="!text-[13px] font-semibold text-amber-200">
+              Best experienced on a laptop or desktop.
+            </p>
+            <p className="mt-1 !text-[13px] leading-5 text-amber-100/80">
+              Cleanframe is a detailed CSV workspace with wide tables, schema
+              tools, and chart controls. Mobile screens are supported, but
+              larger screens provide a much better experience.
+            </p>
+          </div>
+
           <div className="mt-6 flex flex-wrap items-center gap-2">
             <LoadSampleButton />
 
-            <div className="inline-flex h-9 items-center gap-2 rounded-xl bg-muted/35 px-3 !text-[13px] font-semibold text-muted-foreground">
-              <ArrowRight className="size-3.5" />
-              Or upload a CSV from the Source panel
+            <div className="inline-flex min-h-9 items-center gap-2 rounded-xl bg-muted/35 px-3 py-2 !text-[13px] font-semibold text-muted-foreground">
+              <ArrowRight className="size-3.5 shrink-0" />
+              <span>Or upload a CSV from the Source panel</span>
             </div>
           </div>
 
@@ -100,7 +115,7 @@ export function EmptyWorkspace() {
           </div>
         </div>
 
-        <aside className="flex min-h-[620px] flex-col justify-center rounded-[1.6rem] bg-muted/[0.08] p-5">
+        <aside className="flex min-h-0 flex-col justify-start rounded-[1.35rem] bg-muted/[0.08] p-4 sm:p-5 lg:min-h-[620px] lg:justify-center lg:rounded-[1.6rem]">
           <div className="rounded-2xl bg-background/75 p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -123,8 +138,8 @@ export function EmptyWorkspace() {
               <Metric label="Numeric" value="8" />
             </div>
 
-            <div className="mt-4 overflow-hidden rounded-2xl bg-muted/[0.2]">
-              <table className="w-full text-left !text-[13px]">
+            <div className="mt-4 overflow-x-auto rounded-2xl bg-muted/[0.2]">
+              <table className="w-full min-w-[360px] text-left !text-[13px]">
                 <thead className="text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 font-bold">room_type</th>

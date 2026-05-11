@@ -14,11 +14,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { UploadZone } from "@/components/workbench/upload/UploadZone";
+import { cn } from "@/lib/utils";
 import {
   useWorkspaceStore,
   type WorkspacePanel,
 } from "@/store/workspaceStore";
-import { cn } from "@/lib/utils";
 
 type SidebarStep =
   | {
@@ -35,6 +35,11 @@ type SidebarStep =
       icon: ElementType;
       number: string;
     };
+
+type WorkbenchSidebarProps = {
+  className?: string;
+  onNavigate?: () => void;
+};
 
 const steps: SidebarStep[] = [
   {
@@ -85,13 +90,26 @@ function isWorkspacePanel(id: SidebarStep["id"]): id is WorkspacePanel {
   return id !== "export";
 }
 
-export function WorkbenchSidebar() {
+export function WorkbenchSidebar({
+  className,
+  onNavigate,
+}: WorkbenchSidebarProps) {
   const workspace = useWorkspaceStore((state) => state.workspace);
   const activePanel = useWorkspaceStore((state) => state.activePanel);
   const setActivePanel = useWorkspaceStore((state) => state.setActivePanel);
 
+  function goToPanel(panel: WorkspacePanel) {
+    setActivePanel(panel);
+    onNavigate?.();
+  }
+
   return (
-    <aside className="flex h-screen w-[280px] shrink-0 flex-col border-r border-border bg-background">
+    <aside
+      className={cn(
+        "flex h-dvh w-[280px] shrink-0 flex-col border-r border-border bg-background",
+        className,
+      )}
+    >
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
         <div className="mb-4">
           <div className="flex items-start justify-between gap-3">
@@ -143,11 +161,11 @@ export function WorkbenchSidebar() {
                 disabled={!isEnabled}
                 onClick={() => {
                   if (isWorkspacePanel(step.id)) {
-                    setActivePanel(step.id);
+                    goToPanel(step.id);
                     return;
                   }
 
-                  setActivePanel("export" as WorkspacePanel);
+                  goToPanel("export" as WorkspacePanel);
                 }}
                 className={cn(
                   "group flex h-auto w-full items-center justify-start gap-3 rounded-2xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-45",
@@ -188,7 +206,7 @@ export function WorkbenchSidebar() {
       <div className="shrink-0 border-t border-border p-3">
         <button
           type="button"
-          onClick={() => setActivePanel("settings")}
+          onClick={() => goToPanel("settings")}
           className={cn(
             "group flex h-auto w-full items-center justify-start gap-3 rounded-2xl border px-3 py-3 text-left transition",
             activePanel === "settings"

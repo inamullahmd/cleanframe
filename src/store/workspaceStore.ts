@@ -24,6 +24,7 @@ export type WorkspacePanel =
   | "clean"
   | "history"
   | "charts"
+  | "export"
   | "settings";
 
 export type ColumnNameTransform =

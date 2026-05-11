@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/check-select";
 import { InputWithLabel } from "@/components/ui/input-with-label";
 import { ChartView } from "@/components/workbench/analytics/ChartView";
+import { useCleanframeSettings } from "@/hooks/useCleanframeSettings";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/store/workspaceStore";
 import type { ColumnType } from "@/types/dataset";
@@ -37,13 +38,7 @@ export type ChartType =
   | "pie"
   | "histogram";
 
-export type Aggregation =
-  | "count"
-  | "sum"
-  | "average"
-  | "min"
-  | "max"
-  | "median";
+export type Aggregation = "count" | "sum" | "average" | "min" | "max" | "median";
 
 export type ChartLabelMode =
   | "value"
@@ -267,9 +262,7 @@ function getDynamicChartTitle(config: ChartConfig): string {
   }
 
   if (config.chartType === "scatter") {
-    return `${config.yColumn || "Y Column"} vs ${
-      config.xColumn || "X Column"
-    }`;
+    return `${config.yColumn || "Y Column"} vs ${config.xColumn || "X Column"}`;
   }
 
   if (config.aggregation === "count") {
@@ -331,6 +324,22 @@ function getQualityBadgeVariant(score: number) {
   return score >= 75 ? "secondary" : "destructive";
 }
 
+function createDisplayOptionsFromSettings(settings: {
+  showChartLabels: boolean;
+  showChartLegend: boolean;
+  chartAnimation: boolean;
+  chartZoom: boolean;
+}): ChartDisplayOptions {
+  return {
+    ...DEFAULT_DISPLAY_OPTIONS,
+    showLabels: settings.showChartLabels,
+    showLegend: settings.showChartLegend,
+    enableAnimation: settings.chartAnimation,
+    showDataZoom: settings.chartZoom,
+    legendPosition: settings.showChartLegend ? "bottom" : "none",
+  };
+}
+
 function MetricChip({
   icon: Icon,
   label,
@@ -378,40 +387,34 @@ function HeaderMetrics({
         label="Rows"
         value={formatCount(profile.rowCount)}
       />
-
       <MetricChip
         icon={Columns3}
         label="Columns"
         value={formatCount(profile.columnCount)}
       />
-
       <MetricChip
         icon={Sigma}
         label="Numeric"
         value={formatCount(numericColumnCount)}
       />
-
       <MetricChip
         icon={TriangleAlert}
         label="With missing"
         value={formatCount(columnsWithMissingCount)}
         intent={columnsWithMissingCount > 0 ? "warning" : "default"}
       />
-
       <MetricChip
         icon={Copy}
         label="Duplicates"
         value={formatCount(profile.duplicateRowCount)}
         intent={profile.duplicateRowCount > 0 ? "warning" : "default"}
       />
-
       <MetricChip
         icon={AlertTriangle}
         label="Warnings"
         value={formatCount(profile.parseErrors.length)}
         intent={profile.parseErrors.length > 0 ? "danger" : "default"}
       />
-
       <div className="inline-flex h-8 items-center gap-2 rounded-2xl bg-muted/35 px-3">
         <Gauge className="size-3.5 text-muted-foreground" />
         <span className="!text-[12px] font-medium text-muted-foreground">
@@ -431,13 +434,7 @@ function HeaderMetrics({
   );
 }
 
-function ToolChip({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | number;
-}) {
+function ToolChip({ label, value }: { label: string; value: string | number }) {
   return (
     <span className="inline-flex h-8 items-center rounded-2xl bg-muted/35 px-3 !text-[13px] text-muted-foreground">
       {label}: <span className="ml-1 font-bold text-foreground">{value}</span>
@@ -590,6 +587,17 @@ function NativeSelectOption<T extends string>({
   );
 }
 
+function OptionGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="rounded-2xl bg-muted/[0.22] p-3">
+      <div className="mb-3 !text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 function ColumnPoolDropdown({
   value,
   onChange,
@@ -672,10 +680,12 @@ function DisplayOptionsDropdown({
   chartType,
   displayOptions,
   updateDisplayOptions,
+  resetDisplayOptions,
 }: {
   chartType: ChartType;
   displayOptions: ChartDisplayOptions;
   updateDisplayOptions: (nextOptions: Partial<ChartDisplayOptions>) => void;
+  resetDisplayOptions: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -735,7 +745,7 @@ function DisplayOptionsDropdown({
 
           <button
             type="button"
-            onClick={() => updateDisplayOptions(DEFAULT_DISPLAY_OPTIONS)}
+            onClick={resetDisplayOptions}
             className="mt-3 h-8 rounded-xl bg-muted/45 px-3 !text-[13px] font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
           >
             Reset display options
@@ -1079,23 +1089,6 @@ function DisplayOptionsDropdown({
   );
 }
 
-function OptionGroup({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="rounded-2xl bg-muted/[0.22] p-3">
-      <div className="mb-3 !text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-        {title}
-      </div>
-      {children}
-    </div>
-  );
-}
-
 function getColumnNamesByFilter({
   columns,
   filter,
@@ -1125,14 +1118,16 @@ function getColumnNamesByFilter({
 }
 
 export function ChartBuilder() {
+  const { settings } = useCleanframeSettings();
   const workspace = useWorkspaceStore((state) => state.workspace);
 
   const fields = workspace?.fields ?? [];
   const columns = workspace?.profile.columns ?? [];
   const rows = workspace?.workingRows ?? [];
 
-  const [columnFilter, setColumnFilter] =
-    useState<ChartColumnFilter>("recommended");
+  const [columnFilter, setColumnFilter] = useState<ChartColumnFilter>(
+    settings.defaultColumnPool,
+  );
   const [isTitleCustom, setIsTitleCustom] = useState(false);
 
   const numericColumns = useMemo(() => {
@@ -1163,21 +1158,25 @@ export function ChartBuilder() {
         : fields;
 
   const [config, setConfig] = useState<ChartConfig>({
-    chartType: "bar",
+    chartType: settings.defaultChartType,
     xColumn: first(safeGroupableColumns),
     yColumn: first(numericColumns),
-    aggregation: "count",
+    aggregation: settings.defaultAggregation,
     topN: 10,
     title: "Count by Category",
-    displayOptions: DEFAULT_DISPLAY_OPTIONS,
+    displayOptions: createDisplayOptionsFromSettings(settings),
   });
+
+  useEffect(() => {
+    setColumnFilter(settings.defaultColumnPool);
+  }, [settings.defaultColumnPool]);
 
   useEffect(() => {
     setConfig((current) => {
       let nextConfig = {
         ...current,
         displayOptions: {
-          ...DEFAULT_DISPLAY_OPTIONS,
+          ...createDisplayOptionsFromSettings(settings),
           ...current.displayOptions,
         },
       };
@@ -1218,7 +1217,7 @@ export function ChartBuilder() {
           : getDynamicChartTitle(nextConfig),
       };
     });
-  }, [fields, numericColumns, safeGroupableColumns, isTitleCustom]);
+  }, [fields, numericColumns, safeGroupableColumns, isTitleCustom, settings]);
 
   function updateConfig<K extends keyof ChartConfig>(
     key: K,
@@ -1341,10 +1340,17 @@ export function ChartBuilder() {
     setConfig((current) => ({
       ...current,
       displayOptions: {
-        ...DEFAULT_DISPLAY_OPTIONS,
+        ...createDisplayOptionsFromSettings(settings),
         ...current.displayOptions,
         ...nextOptions,
       },
+    }));
+  }
+
+  function resetDisplayOptions() {
+    setConfig((current) => ({
+      ...current,
+      displayOptions: createDisplayOptionsFromSettings(settings),
     }));
   }
 
@@ -1400,6 +1406,11 @@ export function ChartBuilder() {
 
   if (!workspace) return null;
 
+  const effectiveDisplayOptions = {
+    ...createDisplayOptionsFromSettings(settings),
+    ...config.displayOptions,
+  };
+
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[1.35rem] border border-border bg-background !text-[13px] shadow-sm">
       <div className="shrink-0 px-4 py-3">
@@ -1446,11 +1457,9 @@ export function ChartBuilder() {
 
         <DisplayOptionsDropdown
           chartType={config.chartType}
-          displayOptions={{
-            ...DEFAULT_DISPLAY_OPTIONS,
-            ...config.displayOptions,
-          }}
+          displayOptions={effectiveDisplayOptions}
           updateDisplayOptions={updateDisplayOptions}
+          resetDisplayOptions={resetDisplayOptions}
         />
       </div>
 
@@ -1580,13 +1589,11 @@ export function ChartBuilder() {
               rows={rows}
               config={{
                 ...config,
-                displayOptions: {
-                  ...DEFAULT_DISPLAY_OPTIONS,
-                  ...config.displayOptions,
-                },
+                displayOptions: effectiveDisplayOptions,
               }}
               numericColumns={numericColumns}
               groupableColumns={safeGroupableColumns}
+              pngExportScale={Number(settings.pngExportScale)}
             />
           </div>
         </div>

@@ -32,10 +32,9 @@ export function SessionPersistenceToggle() {
 
   useEffect(() => {
     function handleSessionChange() {
-      if (settings.persistWorkspaceLocally) {
-        setStatusLabel("Session saved");
-        window.setTimeout(() => setStatusLabel("Session saving on"), 1400);
-      }
+      if (!settings.persistWorkspaceLocally) return;
+      setStatusLabel("Session saved");
+      window.setTimeout(() => setStatusLabel("Session saving on"), 1400);
     }
 
     function handleSessionClear() {
@@ -43,21 +42,12 @@ export function SessionPersistenceToggle() {
       window.setTimeout(() => setStatusLabel("Session not saved"), 1400);
     }
 
-    window.addEventListener(
-      PERSISTED_WORKSPACE_CHANGE_EVENT,
-      handleSessionChange,
-    );
+    window.addEventListener(PERSISTED_WORKSPACE_CHANGE_EVENT, handleSessionChange);
     window.addEventListener(PERSISTED_WORKSPACE_CLEAR_EVENT, handleSessionClear);
 
     return () => {
-      window.removeEventListener(
-        PERSISTED_WORKSPACE_CHANGE_EVENT,
-        handleSessionChange,
-      );
-      window.removeEventListener(
-        PERSISTED_WORKSPACE_CLEAR_EVENT,
-        handleSessionClear,
-      );
+      window.removeEventListener(PERSISTED_WORKSPACE_CHANGE_EVENT, handleSessionChange);
+      window.removeEventListener(PERSISTED_WORKSPACE_CLEAR_EVENT, handleSessionClear);
     };
   }, [settings.persistWorkspaceLocally]);
 
@@ -75,10 +65,7 @@ export function SessionPersistenceToggle() {
   }
 
   async function turnSessionSavingOff() {
-    updateSettings({
-      persistWorkspaceLocally: false,
-    });
-
+    updateSettings({ persistWorkspaceLocally: false });
     await clearPersistedWorkspaceSession();
   }
 
@@ -123,9 +110,7 @@ export function SessionPersistenceToggle() {
           title={statusLabel}
           className={cn(
             "relative inline-flex h-7 w-[52px] shrink-0 items-center rounded-full border p-1 transition focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-60",
-            enabled
-              ? "border-primary/40 bg-primary/80"
-              : "border-border bg-muted/55",
+            enabled ? "border-primary/40 bg-primary/80" : "border-border bg-muted/55",
           )}
         >
           <span

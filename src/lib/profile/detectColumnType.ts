@@ -1,91 +1,95 @@
 import type { ColumnType } from "@/types/dataset";
+import type { CleanframeSettings, DetectionStrictness } from "@/types/cleanframeSettings";
+import { DEFAULT_CLEANFRAME_SETTINGS } from "@/types/cleanframeSettings";
 import { isMissingValue } from "@/lib/profile/detectMissingValues";
+import {
+  isConfiguredBoolean,
+  parseConfiguredDate,
+  parseConfiguredNumber,
+} from "@/lib/settings/valueParsers";
 
-const BOOLEAN_TOKENS = new Set([
-  "true",
-  "false",
-  "yes",
-  "no",
-  "y",
-  "n",
-  "0",
-  "1",
-]);
+type DetectColumnTypeOptions = Pick<
+  CleanframeSettings,
+  | "emptyValueTokens"
+  | "detectIdColumns"
+  | "numericDetectionStrictness"
+  | "dateDetectionStrictness"
+  | "dateParsingMode"
+  | "numberParsingMode"
+  | "trueValueTokens"
+  | "falseValueTokens"
+>;
+
+const DEFAULT_DETECT_OPTIONS: DetectColumnTypeOptions = {
+  emptyValueTokens: DEFAULT_CLEANFRAME_SETTINGS.emptyValueTokens,
+  detectIdColumns: DEFAULT_CLEANFRAME_SETTINGS.detectIdColumns,
+  numericDetectionStrictness: DEFAULT_CLEANFRAME_SETTINGS.numericDetectionStrictness,
+  dateDetectionStrictness: DEFAULT_CLEANFRAME_SETTINGS.dateDetectionStrictness,
+  dateParsingMode: DEFAULT_CLEANFRAME_SETTINGS.dateParsingMode,
+  numberParsingMode: DEFAULT_CLEANFRAME_SETTINGS.numberParsingMode,
+  trueValueTokens: DEFAULT_CLEANFRAME_SETTINGS.trueValueTokens,
+  falseValueTokens: DEFAULT_CLEANFRAME_SETTINGS.falseValueTokens,
+};
+
+function getThreshold(strictness: DetectionStrictness) {
+  if (strictness === "strict") return 0.98;
+  if (strictness === "aggressive") return 0.85;
+  return 0.95;
+}
+
+function getDateThreshold(strictness: DetectionStrictness) {
+  if (strictness === "strict") return 0.95;
+  if (strictness === "aggressive") return 0.75;
+  return 0.9;
+}
 
 function ratio(values: string[], predicate: (value: string) => boolean): number {
   if (values.length === 0) return 0;
-
   return values.filter(predicate).length / values.length;
 }
 
-function stripCommas(value: string): string {
-  return value.replaceAll(",", "").trim();
+function isInteger(value: string, options: DetectColumnTypeOptions): boolean {
+  const parsed = parseConfiguredNumber(value, options);
+  return parsed !== null && Number.isInteger(parsed) && !String(value).includes(".");
 }
 
-function isInteger(value: string): boolean {
-  return /^-?\d+$/.test(stripCommas(value));
+function isDecimal(value: string, options: DetectColumnTypeOptions): boolean {
+  const parsed = parseConfiguredNumber(value, options);
+  return parsed !== null && !Number.isInteger(parsed);
 }
 
-function isDecimal(value: string): boolean {
-  return /^-?\d+\.\d+$/.test(stripCommas(value));
-}
-
-function isNumber(value: string): boolean {
-  const normalized = stripCommas(value);
-
-  if (!normalized) return false;
-
-  return Number.isFinite(Number(normalized));
+function isNumber(value: string, options: DetectColumnTypeOptions): boolean {
+  return parseConfiguredNumber(value, options) !== null;
 }
 
 function isCurrency(value: string): boolean {
   const trimmed = value.trim();
-
-  return /^[$€£₹¥]\s?-?\d{1,3}(,\d{3})*(\.\d+)?$|^[$€£₹¥]\s?-?\d+(\.\d+)?$/.test(
-    trimmed,
-  );
+  return /^[$€£₹¥]\s?-?\d{1,3}(,\d{3})*(\.\d+)?$|^[$€£₹¥]\s?-?\d+(\.\d+)?$/.test(trimmed);
 }
 
 function isPercentage(value: string): boolean {
   return /^-?\d+(\.\d+)?%$/.test(value.trim());
 }
 
-function isDateOnly(value: string): boolean {
+function isDateOnly(value: string, options: DetectColumnTypeOptions): boolean {
   const trimmed = value.trim();
+  if (!trimmed || /^\d+(\.\d+)?$/.test(trimmed)) return false;
 
-  if (!trimmed) return false;
-  if (/^\d+(\.\d+)?$/.test(trimmed)) return false;
+  const parsed = parseConfiguredDate(trimmed, options);
+  if (!parsed) return false;
 
-  const dateOnlyPatterns = [
-    /^\d{4}-\d{2}-\d{2}$/,
-    /^\d{1,2}\/\d{1,2}\/\d{2,4}$/,
-    /^\d{1,2}-\d{1,2}-\d{2,4}$/,
-  ];
-
-  if (!dateOnlyPatterns.some((pattern) => pattern.test(trimmed))) {
-    return false;
-  }
-
-  return !Number.isNaN(Date.parse(trimmed));
+  return !/[T\s]\d{1,2}:\d{2}/.test(trimmed);
 }
 
-function isDatetime(value: string): boolean {
+function isDatetime(value: string, options: DetectColumnTypeOptions): boolean {
   const trimmed = value.trim();
+  if (!trimmed || /^\d+(\.\d+)?$/.test(trimmed)) return false;
 
-  if (!trimmed) return false;
-  if (/^\d+(\.\d+)?$/.test(trimmed)) return false;
-
-  const looksLikeDatetime =
-    /\d{4}-\d{2}-\d{2}[T\s]\d{1,2}:\d{2}/.test(trimmed) ||
-    /\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}/.test(trimmed);
-
-  return looksLikeDatetime && !Number.isNaN(Date.parse(trimmed));
+  return /\d{1,2}:\d{2}/.test(trimmed) && parseConfiguredDate(trimmed, options) !== null;
 }
 
 function isTime(value: string): boolean {
-  return /^([01]?\d|2[0-3]):[0-5]\d(:[0-5]\d)?(\s?(AM|PM|am|pm))?$/.test(
-    value.trim(),
-  );
+  return /^([01]?\d|2[0-3]):[0-5]\d(:[0-5]\d)?(\s?(AM|PM|am|pm))?$/.test(value.trim());
 }
 
 function isEmail(value: string): boolean {
@@ -95,7 +99,6 @@ function isEmail(value: string): boolean {
 function isUrl(value: string): boolean {
   try {
     const url = new URL(value.trim());
-
     return url.protocol === "http:" || url.protocol === "https:";
   } catch {
     return false;
@@ -103,9 +106,7 @@ function isUrl(value: string): boolean {
 }
 
 function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    value.trim(),
-  );
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
 }
 
 function isPhone(value: string): boolean {
@@ -120,21 +121,18 @@ function isCountryCode(value: string): boolean {
   return /^[A-Z]{2,3}$/.test(value.trim());
 }
 
-function isLatitude(value: string): boolean {
-  const parsed = Number(value.trim());
-
-  return Number.isFinite(parsed) && parsed >= -90 && parsed <= 90;
+function isLatitude(value: string, options: DetectColumnTypeOptions): boolean {
+  const parsed = parseConfiguredNumber(value, options);
+  return parsed !== null && parsed >= -90 && parsed <= 90;
 }
 
-function isLongitude(value: string): boolean {
-  const parsed = Number(value.trim());
-
-  return Number.isFinite(parsed) && parsed >= -180 && parsed <= 180;
+function isLongitude(value: string, options: DetectColumnTypeOptions): boolean {
+  const parsed = parseConfiguredNumber(value, options);
+  return parsed !== null && parsed >= -180 && parsed <= 180;
 }
 
 function isJson(value: string): boolean {
   const trimmed = value.trim();
-
   if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return false;
 
   try {
@@ -147,7 +145,6 @@ function isJson(value: string): boolean {
 
 function looksLikeIdColumn(columnName: string, values: string[]): boolean {
   const normalizedName = columnName.toLowerCase();
-
   const nameSuggestsId =
     normalizedName === "id" ||
     normalizedName.endsWith("_id") ||
@@ -167,33 +164,21 @@ function looksLikeIdColumn(columnName: string, values: string[]): boolean {
 
 function columnNameSuggestsLatitude(columnName: string): boolean {
   const normalized = columnName.toLowerCase();
-
   return normalized === "lat" || normalized.includes("latitude");
 }
 
 function columnNameSuggestsLongitude(columnName: string): boolean {
   const normalized = columnName.toLowerCase();
-
-  return (
-    normalized === "lng" ||
-    normalized === "lon" ||
-    normalized.includes("longitude")
-  );
+  return normalized === "lng" || normalized === "lon" || normalized.includes("longitude");
 }
 
 function columnNameSuggestsPostalCode(columnName: string): boolean {
   const normalized = columnName.toLowerCase();
-
-  return (
-    normalized.includes("zip") ||
-    normalized.includes("postal") ||
-    normalized.includes("postcode")
-  );
+  return normalized.includes("zip") || normalized.includes("postal") || normalized.includes("postcode");
 }
 
 function columnNameSuggestsCountryCode(columnName: string): boolean {
   const normalized = columnName.toLowerCase();
-
   return (
     normalized === "country_code" ||
     normalized === "country code" ||
@@ -205,7 +190,6 @@ function columnNameSuggestsCountryCode(columnName: string): boolean {
 
 function columnNameSuggestsPhone(columnName: string): boolean {
   const normalized = columnName.toLowerCase();
-
   return (
     normalized.includes("phone") ||
     normalized.includes("mobile") ||
@@ -216,7 +200,6 @@ function columnNameSuggestsPhone(columnName: string): boolean {
 
 function columnNameSuggestsCurrency(columnName: string): boolean {
   const normalized = columnName.toLowerCase();
-
   return (
     normalized.includes("price") ||
     normalized.includes("revenue") ||
@@ -233,75 +216,42 @@ function columnNameSuggestsCurrency(columnName: string): boolean {
 export function detectColumnType(
   columnName: string,
   rawValues: unknown[],
+  options: Partial<DetectColumnTypeOptions> = {},
 ): ColumnType {
+  const resolvedOptions = {
+    ...DEFAULT_DETECT_OPTIONS,
+    ...options,
+  };
+
   const values = rawValues
-    .filter((value) => !isMissingValue(value))
+    .filter((value) => !isMissingValue(value, resolvedOptions.emptyValueTokens))
     .map((value) => String(value).trim());
 
   if (values.length === 0) return "text";
 
+  const numericThreshold = getThreshold(resolvedOptions.numericDetectionStrictness);
+  const dateThreshold = getDateThreshold(resolvedOptions.dateDetectionStrictness);
+
   if (ratio(values, isUuid) >= 0.9) return "uuid";
-
-  if (looksLikeIdColumn(columnName, values)) return "id";
-
+  if (resolvedOptions.detectIdColumns && looksLikeIdColumn(columnName, values)) return "id";
   if (ratio(values, isEmail) >= 0.9) return "email";
-
   if (ratio(values, isUrl) >= 0.9) return "url";
-
   if (ratio(values, isJson) >= 0.9) return "json";
-
-  if (ratio(values, (value) => BOOLEAN_TOKENS.has(value.toLowerCase())) >= 0.95) {
-    return "boolean";
-  }
-
-  if (ratio(values, isDatetime) >= 0.9) return "datetime";
-
-  if (ratio(values, isDateOnly) >= 0.9) return "date";
-
-  if (ratio(values, isTime) >= 0.9) return "time";
-
-  if (columnNameSuggestsLatitude(columnName) && ratio(values, isLatitude) >= 0.95) {
-    return "latitude";
-  }
-
-  if (
-    columnNameSuggestsLongitude(columnName) &&
-    ratio(values, isLongitude) >= 0.95
-  ) {
-    return "longitude";
-  }
-
-  if (columnNameSuggestsPhone(columnName) && ratio(values, isPhone) >= 0.9) {
-    return "phone";
-  }
-
-  if (
-    columnNameSuggestsCountryCode(columnName) &&
-    ratio(values, isCountryCode) >= 0.9
-  ) {
-    return "country_code";
-  }
-
-  if (
-    columnNameSuggestsPostalCode(columnName) &&
-    ratio(values, isPostalCode) >= 0.9
-  ) {
-    return "postal_code";
-  }
-
-  if (ratio(values, isPercentage) >= 0.95) return "percentage";
-
-  if (ratio(values, isCurrency) >= 0.95) return "currency";
-
-  if (columnNameSuggestsCurrency(columnName) && ratio(values, isNumber) >= 0.95) {
-    return "currency";
-  }
-
-  if (ratio(values, isInteger) >= 0.95) return "integer";
-
-  if (ratio(values, isDecimal) >= 0.95) return "decimal";
-
-  if (ratio(values, isNumber) >= 0.95) return "number";
+  if (ratio(values, (value) => isConfiguredBoolean(value, resolvedOptions)) >= 0.95) return "boolean";
+  if (ratio(values, (value) => isDatetime(value, resolvedOptions)) >= dateThreshold) return "datetime";
+  if (ratio(values, (value) => isDateOnly(value, resolvedOptions)) >= dateThreshold) return "date";
+  if (ratio(values, isTime) >= dateThreshold) return "time";
+  if (columnNameSuggestsLatitude(columnName) && ratio(values, (value) => isLatitude(value, resolvedOptions)) >= numericThreshold) return "latitude";
+  if (columnNameSuggestsLongitude(columnName) && ratio(values, (value) => isLongitude(value, resolvedOptions)) >= numericThreshold) return "longitude";
+  if (columnNameSuggestsPhone(columnName) && ratio(values, isPhone) >= 0.9) return "phone";
+  if (columnNameSuggestsCountryCode(columnName) && ratio(values, isCountryCode) >= 0.9) return "country_code";
+  if (columnNameSuggestsPostalCode(columnName) && ratio(values, isPostalCode) >= 0.9) return "postal_code";
+  if (ratio(values, isPercentage) >= numericThreshold) return "percentage";
+  if (ratio(values, isCurrency) >= numericThreshold) return "currency";
+  if (columnNameSuggestsCurrency(columnName) && ratio(values, (value) => isNumber(value, resolvedOptions)) >= numericThreshold) return "currency";
+  if (ratio(values, (value) => isInteger(value, resolvedOptions)) >= numericThreshold) return "integer";
+  if (ratio(values, (value) => isDecimal(value, resolvedOptions)) >= numericThreshold) return "decimal";
+  if (ratio(values, (value) => isNumber(value, resolvedOptions)) >= numericThreshold) return "number";
 
   const uniqueCount = new Set(values).size;
   const uniqueRatio = uniqueCount / values.length;

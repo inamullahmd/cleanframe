@@ -1,103 +1,77 @@
 "use client";
 
-import type { ElementType } from "react";
-import {
-  AlertTriangle,
-  Clock3,
-  Columns3,
-  Copy,
-  Gauge,
-  History,
-  RotateCcw,
-  Rows3,
-  Sigma,
-  TriangleAlert,
-} from "lucide-react";
+import { Clock3, GitBranch, RotateCcw, Sparkles } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCleanframeSettings } from "@/hooks/useCleanframeSettings";
+import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/store/workspaceStore";
-import type { WorkspaceHistoryAction } from "@/types/history";
-import type { DatasetProfile } from "@/types/profile";
 
-const NUMERIC_TYPES = ["integer", "decimal", "number", "percentage", "currency", "latitude", "longitude"];
+type HistoryEntryLike = {
+  id: string;
+  action?: string;
+  label?: string;
+  description?: string;
+  createdAt?: string;
+  rowCount?: number;
+  columnCount?: number;
+  qualityScore?: number;
+};
 
-function formatCount(value: number): string {
-  return value.toLocaleString();
+function formatDateTime(value?: string) {
+  if (!value) return "Unknown time";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
-function getQualityLabel(score: number): string {
-  if (score >= 90) return "Excellent";
-  if (score >= 75) return "Good";
-  if (score >= 60) return "Review";
-  return "Risk";
+
+function formatActionLabel(action?: string) {
+  if (!action) return "Change";
+
+  return action
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
-function getQualityBadgeVariant(score: number) {
-  return score >= 75 ? "secondary" : "destructive";
-}
-function MetricChip({ icon: Icon, label, value }: { icon: ElementType; label: string; value: string }) {
-  return (
-    <div className="inline-flex h-8 items-center gap-2 rounded-2xl bg-muted/35 px-3">
-      <Icon className="size-3.5 text-muted-foreground" />
-      <span className="!text-[12px] font-medium text-muted-foreground">{label}</span>
-      <span className="!text-[13px] font-bold text-foreground">{value}</span>
-    </div>
-  );
-}
-function HeaderMetrics({ profile, numericColumnCount, columnsWithMissingCount }: { profile: DatasetProfile; numericColumnCount: number; columnsWithMissingCount: number }) {
-  return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
-      <MetricChip icon={Rows3} label="Rows" value={formatCount(profile.rowCount)} />
-      <MetricChip icon={Columns3} label="Columns" value={formatCount(profile.columnCount)} />
-      <MetricChip icon={Sigma} label="Numeric" value={formatCount(numericColumnCount)} />
-      <MetricChip icon={TriangleAlert} label="Missing cols" value={formatCount(columnsWithMissingCount)} />
-      <div className="inline-flex h-8 items-center gap-2 rounded-2xl bg-muted/35 px-3">
-        <Gauge className="size-3.5 text-muted-foreground" />
-        <span className="!text-[12px] font-medium text-muted-foreground">Quality</span>
-        <span className="!text-[13px] font-bold text-foreground">{profile.qualityScore}/100</span>
-        <Badge variant={getQualityBadgeVariant(profile.qualityScore)} className="h-5 rounded-lg px-1.5 !text-[11px]">{getQualityLabel(profile.qualityScore)}</Badge>
-      </div>
-    </div>
-  );
-}
-function getActionLabel(action: WorkspaceHistoryAction): string {
-  const labels: Record<WorkspaceHistoryAction, string> = {
-    dataset_loaded: "Dataset",
-    column_renamed: "Schema",
-    column_names_transformed: "Schema",
-    column_type_changed: "Schema",
-    column_added: "Schema",
-    column_deleted: "Schema",
-    missing_values_fixed: "Clean",
-    cleaning_reset: "Clean",
-    settings_changed: "Settings",
-    history_reverted: "Revert",
-  };
-  return labels[action];
-}
-function ToolChip({ label, value }: { label: string; value: string | number }) {
-  return <span className="inline-flex h-8 items-center rounded-2xl bg-muted/35 px-3 !text-[13px] text-muted-foreground">{label}: <span className="ml-1 font-bold text-foreground">{value}</span></span>;
+
+function getActionTone(action?: string) {
+  if (action === "dataset_loaded") return "bg-primary/10 text-primary";
+  if (action === "history_reverted") return "bg-blue-500/10 text-blue-600 dark:text-blue-300";
+  if (action === "missing_values_fixed") return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300";
+  if (action === "column_deleted") return "bg-rose-500/10 text-rose-600 dark:text-rose-300";
+
+  return "bg-muted text-muted-foreground";
 }
 
 export function HistoryPanel() {
   const { settings } = useCleanframeSettings();
   const workspace = useWorkspaceStore((state) => state.workspace);
-  const revertToHistoryPoint = useWorkspaceStore((state) => state.revertToHistoryPoint);
+  const revertToHistoryPoint = useWorkspaceStore(
+    (state) => state.revertToHistoryPoint,
+  );
 
   if (!workspace) return null;
 
-  const historyLimit = Number(settings.maxHistoryPoints);
-  const history = workspace.history.slice(-historyLimit);
-  const currentHistoryId = history.at(-1)?.id;
-  const numericColumnCount = workspace.profile.columns.filter((column) => NUMERIC_TYPES.includes(column.type)).length;
-  const columnsWithMissingCount = workspace.profile.columns.filter((column) => column.missingCount > 0).length;
+  const history = [...((workspace.history ?? []) as HistoryEntryLike[])].reverse();
 
-  function handleRestore(historyId: string, label: string) {
-    if (settings.confirmBeforeRestore) {
-      const confirmed = window.confirm(`Restore workspace to "${label}"? Your current state will become a new history point.`);
-      if (!confirmed) return;
+  function restoreHistoryPoint(pointId: string) {
+    if (
+      settings.confirmBeforeRestore &&
+      !window.confirm("Restore this history point?")
+    ) {
+      return;
     }
-    revertToHistoryPoint(historyId);
+
+    revertToHistoryPoint(pointId);
   }
 
   return (
@@ -105,36 +79,121 @@ export function HistoryPanel() {
       <div className="shrink-0 px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
-            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-2xl bg-muted/45 text-foreground"><History className="size-4" /></span>
-            <div className="min-w-0"><h2 className="!text-[13px] font-bold tracking-[-0.02em] text-foreground">History</h2><p className="mt-1 !text-[13px] leading-5 text-muted-foreground">Review restore points and revert the workspace to any previous state.</p></div>
-          </div>
-          <HeaderMetrics profile={workspace.profile} numericColumnCount={numericColumnCount} columnsWithMissingCount={columnsWithMissingCount} />
-        </div>
-      </div>
+            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-2xl bg-muted/45 text-foreground">
+              <GitBranch className="size-4" />
+            </span>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2 bg-muted/[0.18] px-4 py-2">
-        <ToolChip label="Restore points" value={history.length} />
-        <ToolChip label="Limit" value={settings.maxHistoryPoints} />
-        <ToolChip label="Confirm restore" value={settings.confirmBeforeRestore ? "On" : "Off"} />
+            <div className="min-w-0">
+              <h2 className="!text-[13px] font-bold tracking-[-0.02em] text-foreground">
+                History
+              </h2>
+              <p className="mt-1 !text-[13px] leading-5 text-muted-foreground">
+                Review restore points and revert the workspace to an earlier state.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex h-8 items-center gap-2 rounded-2xl bg-muted/35 px-3">
+              <Clock3 className="size-3.5 text-muted-foreground" />
+              <span className="!text-[12px] font-medium text-muted-foreground">
+                Points
+              </span>
+              <span className="!text-[13px] font-bold text-foreground">
+                {history.length.toLocaleString()}
+              </span>
+            </div>
+
+            <div className="inline-flex h-8 items-center gap-2 rounded-2xl bg-muted/35 px-3">
+              <Sparkles className="size-3.5 text-muted-foreground" />
+              <span className="!text-[12px] font-medium text-muted-foreground">
+                Confirmation
+              </span>
+              <span className="!text-[13px] font-bold text-foreground">
+                {settings.confirmBeforeRestore ? "On" : "Off"}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto bg-muted/[0.06] p-3">
         {history.length === 0 ? (
-          <div className="rounded-2xl bg-background p-6 text-center"><AlertTriangle className="mx-auto size-7 text-muted-foreground" /><h3 className="mt-3 !text-[13px] font-bold text-foreground">No history yet</h3><p className="mt-1 !text-[13px] text-muted-foreground">Restore points will appear here after workspace changes.</p></div>
+          <div className="flex h-full items-center justify-center rounded-2xl bg-background/70 p-6 text-center">
+            <div className="max-w-sm">
+              <GitBranch className="mx-auto size-8 text-muted-foreground" />
+              <h3 className="mt-3 !text-[13px] font-bold text-foreground">
+                No history yet
+              </h3>
+              <p className="mt-1 !text-[13px] leading-5 text-muted-foreground">
+                Changes you make to schema, cleaning, and settings will appear here.
+              </p>
+            </div>
+          </div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {history.slice().reverse().map((entry, reverseIndex) => {
-              const isCurrent = entry.id === currentHistoryId;
-              const originalIndex = history.length - reverseIndex;
+            {history.map((point, index) => {
+              const latest = index === 0;
+              const title = point.label || formatActionLabel(point.action);
+
               return (
-                <article key={entry.id} className="rounded-2xl bg-background p-4 shadow-sm">
+                <article
+                  key={point.id}
+                  className={cn(
+                    "rounded-2xl border border-border/70 bg-background/80 p-4 shadow-sm transition hover:shadow-md",
+                    latest && "border-primary/30 ring-2 ring-primary/5",
+                  )}
+                >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><Badge variant="secondary" className="rounded-lg !text-[11px]">#{originalIndex}</Badge><Badge variant="outline" className="rounded-lg !text-[11px]">{getActionLabel(entry.action)}</Badge>{isCurrent ? <Badge className="rounded-lg !text-[11px]">Current</Badge> : null}</div><h3 className="mt-3 !text-[13px] font-bold text-foreground">{entry.label}</h3></div>
-                    <Clock3 className="size-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant="secondary"
+                          className={cn(
+                            "rounded-lg px-2 !text-[11px]",
+                            getActionTone(point.action),
+                          )}
+                        >
+                          {formatActionLabel(point.action)}
+                        </Badge>
+
+                        {latest ? (
+                          <Badge className="rounded-lg px-2 !text-[11px]">
+                            Latest
+                          </Badge>
+                        ) : null}
+                      </div>
+
+                      <h3 className="mt-3 truncate !text-[13px] font-bold text-foreground">
+                        {title}
+                      </h3>
+                      <p className="mt-1 !text-[13px] leading-5 text-muted-foreground">
+                        {point.description || "Workspace restore point."}
+                      </p>
+                    </div>
                   </div>
-                  <p className="mt-2 !text-[13px] leading-5 text-muted-foreground">{entry.description}</p>
-                  <div className="mt-3 space-y-1 !text-[12px] text-muted-foreground"><p>{new Date(entry.createdAt).toLocaleString()}</p><p>Rows: {entry.rowCount.toLocaleString()} · Columns: {entry.columnCount.toLocaleString()} · Quality: {entry.qualityScore}/100</p></div>
-                  <Button type="button" variant={isCurrent ? "secondary" : "outline"} disabled={isCurrent} onClick={() => handleRestore(entry.id, entry.label)} className="mt-4 h-8 rounded-xl px-3 !text-[13px]">{isCurrent ? <>Current point</> : <><RotateCcw className="mr-1.5 size-3.5" />Revert here</>}</Button>
+
+                  <div className="mt-4 grid grid-cols-3 gap-2">
+                    <Metric label="Rows" value={point.rowCount ?? 0} />
+                    <Metric label="Cols" value={point.columnCount ?? 0} />
+                    <Metric label="Quality" value={point.qualityScore ?? 0} />
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    <p className="min-w-0 truncate !text-[12px] text-muted-foreground">
+                      {formatDateTime(point.createdAt)}
+                    </p>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => restoreHistoryPoint(point.id)}
+                      className="h-8 shrink-0 rounded-xl px-3 !text-[13px]"
+                    >
+                      <RotateCcw className="mr-1.5 size-3.5" />
+                      Restore
+                    </Button>
+                  </div>
                 </article>
               );
             })}
@@ -142,5 +201,16 @@ export function HistoryPanel() {
         )}
       </div>
     </section>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl bg-muted/[0.2] px-2 py-2">
+      <p className="!text-[11px] text-muted-foreground">{label}</p>
+      <p className="mt-0.5 !text-[13px] font-bold text-foreground">
+        {Number(value).toLocaleString()}
+      </p>
+    </div>
   );
 }

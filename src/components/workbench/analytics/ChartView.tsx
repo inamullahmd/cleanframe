@@ -6,8 +6,10 @@ import type { EChartsOption } from "echarts";
 import { Archive, Check, Download, Info } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { useExportPackageStore } from "@/store/exportPackageStore";
 import { cn } from "@/lib/utils";
+import { loadCleanframeSettings } from "@/lib/settings/cleanframeSettings";
+import { parseConfiguredNumber } from "@/lib/settings/valueParsers";
+import { useExportPackageStore } from "@/store/exportPackageStore";
 import type { DatasetRow } from "@/types/dataset";
 import type {
   Aggregation,
@@ -20,6 +22,7 @@ type Props = {
   config: ChartConfig;
   numericColumns: string[];
   groupableColumns: string[];
+  pngExportScale?: number;
 };
 
 type ChartDatum = {
@@ -78,10 +81,7 @@ function getSafeDecimalPlaces(value: number | undefined, fallback: number) {
   return Math.min(6, Math.max(0, Number(value)));
 }
 
-function getSafePercentDecimalPlaces(
-  value: number | undefined,
-  fallback: number,
-) {
+function getSafePercentDecimalPlaces(value: number | undefined, fallback: number) {
   if (!Number.isFinite(value)) return fallback;
 
   return Math.min(4, Math.max(0, Number(value)));
@@ -118,7 +118,6 @@ function formatChartPercent(value: unknown, decimalPlaces: number) {
 function getFormatterValue(params: unknown) {
   const item = params as {
     value?: unknown;
-    data?: unknown;
   };
 
   if (Array.isArray(item.value)) {
@@ -448,15 +447,12 @@ async function composeChartImageWithTitle({
 }
 
 function parseNumber(value: unknown): number | null {
-  const normalized = String(value ?? "")
-    .trim()
-    .replaceAll(",", "")
-    .replace("%", "")
-    .replace(/^[^\d.-]+/, "");
+  const settings = loadCleanframeSettings();
 
-  const parsed = Number(normalized);
-
-  return Number.isFinite(parsed) ? parsed : null;
+  return parseConfiguredNumber(value, {
+    numberParsingMode: settings.numberParsingMode,
+    emptyValueTokens: settings.emptyValueTokens,
+  });
 }
 
 function median(values: number[]) {
@@ -563,7 +559,7 @@ function buildHistogramData(
   const binCount = 10;
   const binSize = max === min ? 1 : (max - min) / binCount;
 
-  const bins = Array.from({ length: binCount }, (_, index) => {
+  const bins = Array.from({ length: binCount }, (_item, index) => {
     const start = min + index * binSize;
     const end = start + binSize;
 
@@ -672,9 +668,7 @@ function getLegendConfig(
   return undefined;
 }
 
-function getGridConfig(
-  displayOptions: ChartDisplayOptions,
-): EChartsOption["grid"] {
+function getGridConfig(displayOptions: ChartDisplayOptions): EChartsOption["grid"] {
   const padding = displayOptions.chartPadding;
 
   return {
@@ -744,10 +738,7 @@ function getTooltipConfig({
 }): EChartsOption["tooltip"] {
   if (!displayOptions.showTooltip) return undefined;
 
-  const valueDecimals = getSafeDecimalPlaces(
-    displayOptions.valueDecimalPlaces,
-    2,
-  );
+  const valueDecimals = getSafeDecimalPlaces(displayOptions.valueDecimalPlaces, 2);
   const percentDecimals = getSafePercentDecimalPlaces(
     displayOptions.percentDecimalPlaces,
     1,
@@ -769,10 +760,7 @@ function getTooltipConfig({
         "border-radius: 12px; box-shadow: 0 12px 28px rgba(0,0,0,0.22);",
       formatter: (params: unknown) => {
         const name = getFormatterName(params);
-        const value = formatChartValue(
-          getFormatterValue(params),
-          valueDecimals,
-        );
+        const value = formatChartValue(getFormatterValue(params), valueDecimals);
         const percent = formatChartPercent(
           getFormatterPercent(params),
           percentDecimals,
@@ -1265,6 +1253,7 @@ export function ChartView({
   config,
   numericColumns,
   groupableColumns,
+  pngExportScale = 2,
 }: Props) {
   const chartInstanceRef = useRef<ReactEChartsRef | null>(null);
   const chartTheme = useChartThemeTokens();
@@ -1361,7 +1350,7 @@ export function ChartView({
     const rawChartDataUrl = getChartImageDataUrl({
       chart,
       backgroundColor: chartTheme.background,
-      pixelRatio: 2,
+      pixelRatio: pngExportScale,
     });
 
     return composeChartImageWithTitle({
@@ -1401,45 +1390,45 @@ export function ChartView({
     window.setTimeout(() => setSavedFlash(false), 1400);
   }
 
- function renderChart() {
-  if (compatibilityMessage) {
+  function renderChart() {
+    if (compatibilityMessage) {
+      return (
+        <ChartEmptyState
+          title="Chart setup needs attention"
+          description={compatibilityMessage}
+        />
+      );
+    }
+
+    if (chartData.length === 0) {
+      return (
+        <ChartEmptyState
+          title="No chart data available"
+          description="Try another chart type, column, aggregation, or column pool."
+        />
+      );
+    }
+
     return (
-      <ChartEmptyState
-        title="Chart setup needs attention"
-        description={compatibilityMessage}
+      <ReactECharts
+        ref={chartInstanceRef as never}
+        option={chartOption}
+        notMerge={false}
+        replaceMerge={[
+          "series",
+          "xAxis",
+          "yAxis",
+          "grid",
+          "dataZoom",
+          "legend",
+        ]}
+        lazyUpdate
+        opts={{ renderer: "canvas" }}
+        style={{ width: "100%", height: "100%" }}
+        className="h-full w-full"
       />
     );
   }
-
-  if (chartData.length === 0) {
-    return (
-      <ChartEmptyState
-        title="No chart data available"
-        description="Try another chart type, column, aggregation, or column pool."
-      />
-    );
-  }
-
-  return (
-    <ReactECharts
-      ref={chartInstanceRef as never}
-      option={chartOption}
-      notMerge={false}
-      replaceMerge={[
-        "series",
-        "xAxis",
-        "yAxis",
-        "grid",
-        "dataZoom",
-        "legend",
-      ]}
-      lazyUpdate
-      opts={{ renderer: "canvas" }}
-      style={{ width: "100%", height: "100%" }}
-      className="h-full w-full"
-    />
-  );
-}
 
   return (
     <section className="flex h-full min-h-[520px] min-w-0 flex-col overflow-hidden">

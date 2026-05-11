@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import Papa from "papaparse";
 
+import { getResolvedDelimiter } from "@/lib/settings/delimiter";
+import { parseMissingValueTokens } from "@/lib/profile/detectMissingValues";
+import { profileDataset } from "@/lib/profile/profileDataset";
 import type { DatasetRow } from "@/types/dataset";
 import type { DatasetWorkspace } from "@/types/workspace";
 import type { CsvEncoding } from "@/types/settings";
@@ -11,9 +14,9 @@ import {
   type ColumnNameFormat,
   type DuplicateColumnStrategy,
 } from "@/types/cleanframeSettings";
-import { profileDataset } from "@/lib/profile/profileDataset";
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
 const ALLOWED_ENCODINGS: CsvEncoding[] = [
   "utf-8",
   "utf-8-sig",
@@ -79,7 +82,7 @@ function validateFile(file: File): string | null {
   return null;
 }
 
-async function decodeCsvText(file: File, encoding: CsvEncoding): Promise<string> {
+async function decodeCsvText(file: File, encoding: CsvEncoding) {
   const buffer = await file.arrayBuffer();
   const decoderEncoding = encoding === "utf-8-sig" ? "utf-8" : encoding;
   let csvText = new TextDecoder(decoderEncoding).decode(buffer);
@@ -91,14 +94,6 @@ async function decodeCsvText(file: File, encoding: CsvEncoding): Promise<string>
   return csvText;
 }
 
-function getDelimiter(delimiter: CleanframeSettings["delimiter"]) {
-  if (delimiter === "comma") return ",";
-  if (delimiter === "semicolon") return ";";
-  if (delimiter === "tab") return "\t";
-  if (delimiter === "pipe") return "|";
-  return "";
-}
-
 function splitColumnNameIntoWords(name: string) {
   const spacedName = name
     .trim()
@@ -107,31 +102,44 @@ function splitColumnNameIntoWords(name: string) {
     .replace(/\s+/g, " ");
 
   if (!spacedName) return ["Column"];
+
   return spacedName.split(" ").filter(Boolean);
 }
 
 function toTitleWord(word: string) {
   const normalized = word.toLowerCase();
+
   if (ACRONYM_WORDS.has(normalized)) return normalized.toUpperCase();
+
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
 function toCamelWord(word: string) {
   const normalized = word.toLowerCase();
+
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
 function formatColumnName(name: string, format: ColumnNameFormat) {
   const trimmedName = name.trim();
+
   if (format === "original") return trimmedName || "Column";
 
   const words = splitColumnNameIntoWords(trimmedName);
 
   if (format === "title_case_spaces") return words.map(toTitleWord).join(" ");
-  if (format === "lowercase_spaces") return words.map((word) => word.toLowerCase()).join(" ");
-  if (format === "snake_case") return words.map((word) => word.toLowerCase()).join("_");
+
+  if (format === "lowercase_spaces") {
+    return words.map((word) => word.toLowerCase()).join(" ");
+  }
+
+  if (format === "snake_case") {
+    return words.map((word) => word.toLowerCase()).join("_");
+  }
+
   if (format === "camel_case") {
     const [firstWord, ...restWords] = words;
+
     return [(firstWord ?? "column").toLowerCase(), ...restWords.map(toCamelWord)].join("");
   }
 
@@ -156,7 +164,10 @@ function cleanHeader(header: string, settings: CleanframeSettings) {
   return nextHeader.replace(/\s+/g, " ").trim() || "Column";
 }
 
-function makeUniqueColumnNames(names: string[], strategy: DuplicateColumnStrategy) {
+function makeUniqueColumnNames(
+  names: string[],
+  strategy: DuplicateColumnStrategy,
+) {
   const seen = new Map<string, number>();
 
   return names.map((name) => {
@@ -172,21 +183,25 @@ function makeUniqueColumnNames(names: string[], strategy: DuplicateColumnStrateg
     if (strategy === "keep_first") {
       let hiddenSuffix = currentCount + 1;
       let hiddenName = `${baseName} ${hiddenSuffix}`;
+
       while (seen.has(hiddenName.toLowerCase())) {
         hiddenSuffix += 1;
         hiddenName = `${baseName} ${hiddenSuffix}`;
       }
+
       seen.set(normalizedBaseName, hiddenSuffix);
       seen.set(hiddenName.toLowerCase(), 1);
       return hiddenName;
     }
 
     let suffix = currentCount + 1;
-    let candidate = strategy === "make_unique" ? `${baseName} ${suffix}` : `${baseName}_${suffix}`;
+    let candidate =
+      strategy === "make_unique" ? `${baseName} ${suffix}` : `${baseName}_${suffix}`;
 
     while (seen.has(candidate.toLowerCase())) {
       suffix += 1;
-      candidate = strategy === "make_unique" ? `${baseName} ${suffix}` : `${baseName}_${suffix}`;
+      candidate =
+        strategy === "make_unique" ? `${baseName} ${suffix}` : `${baseName}_${suffix}`;
     }
 
     seen.set(normalizedBaseName, suffix);
@@ -196,12 +211,7 @@ function makeUniqueColumnNames(names: string[], strategy: DuplicateColumnStrateg
 }
 
 function getEmptyTokens(settings: CleanframeSettings) {
-  return new Set(
-    settings.emptyValueTokens
-      .split(",")
-      .map((token) => token.trim().toLowerCase())
-      .filter((token) => token && token !== "empty"),
-  );
+  return parseMissingValueTokens(settings.emptyValueTokens);
 }
 
 function normalizeCellValue(
@@ -214,12 +224,19 @@ function normalizeCellValue(
   const rawValue = String(value);
   const nextValue = settings.trimCellsOnImport ? rawValue.trim() : rawValue;
 
-  if (emptyTokens.has(nextValue.toLowerCase())) return "";
+  if (emptyTokens.has(nextValue.trim().toLowerCase())) return "";
+
   return nextValue;
 }
 
+function getPapaDelimiter(settings: CleanframeSettings) {
+  const delimiter = getResolvedDelimiter(settings);
+
+  return delimiter ?? "";
+}
+
 function parseCsv(csvText: string, settings: CleanframeSettings): ParsedCsvResult {
-  const delimiter = getDelimiter(settings.delimiter);
+  const delimiter = getPapaDelimiter(settings);
   const emptyTokens = getEmptyTokens(settings);
 
   if (!settings.hasHeaderRow) {
@@ -231,14 +248,20 @@ function parseCsv(csvText: string, settings: CleanframeSettings): ParsedCsvResul
     });
 
     const maxColumnCount = Math.max(...result.data.map((row) => row.length), 0);
-    const fields = Array.from({ length: maxColumnCount }, (_item, index) => `Column ${index + 1}`);
+    const fields = Array.from(
+      { length: maxColumnCount },
+      (_item, index) => `Column ${index + 1}`,
+    );
+
     const rows = result.data
       .filter((row) => row.some((value) => String(value ?? "").trim() !== ""))
       .map((row) => {
         const normalizedRow: DatasetRow = {};
+
         fields.forEach((field, index) => {
           normalizedRow[field] = normalizeCellValue(row[index], settings, emptyTokens);
         });
+
         return normalizedRow;
       });
 
@@ -265,10 +288,12 @@ function parseCsv(csvText: string, settings: CleanframeSettings): ParsedCsvResul
     .filter((row) => rawFields.some((field) => String(row[field] ?? "").trim() !== ""))
     .map((row) => {
       const normalizedRow: DatasetRow = {};
+
       for (const rawField of rawFields) {
         const field = fieldMap.get(rawField) ?? rawField;
         normalizedRow[field] = normalizeCellValue(row[rawField], settings, emptyTokens);
       }
+
       return normalizedRow;
     });
 
@@ -292,6 +317,7 @@ export async function POST(request: Request) {
     }
 
     const validationError = validateFile(file);
+
     if (validationError) {
       return NextResponse.json({ error: validationError }, { status: 400 });
     }
@@ -300,17 +326,24 @@ export async function POST(request: Request) {
     const { fields, rows, parseErrors } = parseCsv(csvText, settings);
 
     if (fields.length === 0) {
-      return NextResponse.json({ error: "CSV must contain at least one column." }, { status: 400 });
+      return NextResponse.json(
+        { error: "CSV must contain at least one column." },
+        { status: 400 },
+      );
     }
 
     if (rows.length === 0) {
-      return NextResponse.json({ error: "CSV does not contain any data rows." }, { status: 400 });
+      return NextResponse.json(
+        { error: "CSV does not contain any data rows." },
+        { status: 400 },
+      );
     }
 
     const profile = profileDataset(rows, fields, {
       fileName: file.name,
       fileSizeBytes: file.size,
       parseErrors,
+      settings,
     });
 
     const workspace: DatasetWorkspace = {

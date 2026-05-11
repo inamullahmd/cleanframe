@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useCleanframeSettings } from "@/hooks/useCleanframeSettings";
 import { cn } from "@/lib/utils";
 import {
   useExportPackageStore,
@@ -31,15 +32,6 @@ type ExportOptions = {
   includeColumnSummary: boolean;
   includeHistory: boolean;
   includeSavedCharts: boolean;
-};
-
-const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
-  includeCleanedCsv: true,
-  includeCleanedJson: true,
-  includeSchemaProfile: true,
-  includeColumnSummary: true,
-  includeHistory: true,
-  includeSavedCharts: true,
 };
 
 function sanitizeFileName(value: string) {
@@ -144,13 +136,28 @@ function dataUrlToBase64(dataUrl: string) {
   return dataUrl.split(",")[1] ?? "";
 }
 
-function getPackageFileName(datasetName: string) {
+function getPackageFileName({
+  datasetName,
+  pattern,
+}: {
+  datasetName: string;
+  pattern: string;
+}) {
+  const cleanDatasetName = sanitizeFileName(datasetName);
   const timestamp = new Date()
     .toISOString()
     .replaceAll(":", "-")
     .replace(/\.\d{3}Z$/, "");
 
-  return `${sanitizeFileName(datasetName)}-cleanframe-export-${timestamp}.zip`;
+  if (pattern === "dataset_only") {
+    return `${cleanDatasetName}-cleanframe-export.zip`;
+  }
+
+  if (pattern === "cleanframe_timestamp") {
+    return `cleanframe-export-${timestamp}.zip`;
+  }
+
+  return `${cleanDatasetName}-cleanframe-export-${timestamp}.zip`;
 }
 
 function getReadme({
@@ -246,7 +253,21 @@ function ExportToggle({
   );
 }
 
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-3 rounded-xl bg-muted/[0.18] px-3 py-2">
+      <span className="shrink-0 !text-[13px] text-muted-foreground">
+        {label}
+      </span>
+      <span className="min-w-0 truncate text-right !text-[13px] font-bold text-foreground">
+        {value}
+      </span>
+    </div>
+  );
+}
+
 export function ExportPackagePanel() {
+  const { settings } = useCleanframeSettings();
   const workspace = useWorkspaceStore((state) => state.workspace);
   const savedCharts = useExportPackageStore((state) => state.savedCharts);
   const removeSavedChart = useExportPackageStore(
@@ -256,11 +277,37 @@ export function ExportPackagePanel() {
     (state) => state.clearSavedCharts,
   );
 
-  const [options, setOptions] = useState<ExportOptions>(
-    DEFAULT_EXPORT_OPTIONS,
-  );
+  const [options, setOptions] = useState<ExportOptions>({
+    includeCleanedCsv:
+      settings.includeCleanedData && settings.defaultExportFormat === "csv",
+    includeCleanedJson:
+      settings.includeCleanedData && settings.defaultExportFormat === "json",
+    includeSchemaProfile: settings.includeSchemaProfile,
+    includeColumnSummary: settings.includeSchemaProfile,
+    includeHistory: settings.includeCleaningHistory,
+    includeSavedCharts: settings.includeChartPngs,
+  });
   const [selectedChartIds, setSelectedChartIds] = useState<string[]>([]);
   const [isExporting, setIsExporting] = useState(false);
+
+  useEffect(() => {
+    setOptions({
+      includeCleanedCsv:
+        settings.includeCleanedData && settings.defaultExportFormat === "csv",
+      includeCleanedJson:
+        settings.includeCleanedData && settings.defaultExportFormat === "json",
+      includeSchemaProfile: settings.includeSchemaProfile,
+      includeColumnSummary: settings.includeSchemaProfile,
+      includeHistory: settings.includeCleaningHistory,
+      includeSavedCharts: settings.includeChartPngs,
+    });
+  }, [
+    settings.includeCleanedData,
+    settings.defaultExportFormat,
+    settings.includeSchemaProfile,
+    settings.includeCleaningHistory,
+    settings.includeChartPngs,
+  ]);
 
   useEffect(() => {
     setSelectedChartIds((current) => {
@@ -410,7 +457,10 @@ export function ExportPackagePanel() {
       const link = document.createElement("a");
 
       link.href = url;
-      link.download = getPackageFileName(datasetName);
+      link.download = getPackageFileName({
+        datasetName,
+        pattern: settings.fileNamingPattern,
+      });
       link.click();
 
       URL.revokeObjectURL(url);
@@ -514,9 +564,7 @@ export function ExportPackagePanel() {
                   title="Workspace history"
                   description="Include restore points and change history as JSON."
                   icon={GitBranch}
-                  onChange={(checked) =>
-                    updateOption("includeHistory", checked)
-                  }
+                  onChange={(checked) => updateOption("includeHistory", checked)}
                 />
 
                 <ExportToggle
@@ -603,8 +651,7 @@ export function ExportPackagePanel() {
                               {chart.title}
                             </span>
                             <span className="mt-0.5 block !text-[13px] text-muted-foreground">
-                              {chart.chartType} · saved{" "}
-                              {formatDateTime(chart.savedAt)}
+                              {chart.chartType} · saved {formatDateTime(chart.savedAt)}
                             </span>
                           </span>
                         </button>
@@ -651,10 +698,7 @@ export function ExportPackagePanel() {
               </div>
 
               <div className="mt-4 space-y-2">
-                <SummaryRow
-                  label="Dataset"
-                  value={workspace.file.name}
-                />
+                <SummaryRow label="Dataset" value={workspace.file.name} />
                 <SummaryRow
                   label="Rows"
                   value={workspace.profile.rowCount.toLocaleString()}
@@ -694,18 +738,5 @@ export function ExportPackagePanel() {
         </div>
       </div>
     </section>
-  );
-}
-
-function SummaryRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex min-w-0 items-center justify-between gap-3 rounded-xl bg-muted/[0.18] px-3 py-2">
-      <span className="shrink-0 !text-[13px] text-muted-foreground">
-        {label}
-      </span>
-      <span className="min-w-0 truncate text-right !text-[13px] font-bold text-foreground">
-        {value}
-      </span>
-    </div>
   );
 }

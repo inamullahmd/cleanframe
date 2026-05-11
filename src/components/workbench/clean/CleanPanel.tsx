@@ -44,10 +44,10 @@ const NUMERIC_STRATEGIES: CheckSelectOption<MissingValueStrategy>[] = [
 ];
 const CATEGORY_STRATEGIES: CheckSelectOption<MissingValueStrategy>[] = [
   { value: "fill_mode", label: "Fill Most Frequent", description: "Use the most common category." },
-  { value: "fill_unknown", label: "Fill Unknown", description: 'Replace with "Unknown".' },
+  { value: "fill_unknown", label: "Fill Unknown", description: "Use the default unknown fill value from Settings." },
 ];
 const TEXT_STRATEGIES: CheckSelectOption<MissingValueStrategy>[] = [
-  { value: "fill_unknown", label: "Fill Unknown", description: 'Replace with "Unknown".' },
+  { value: "fill_unknown", label: "Fill Unknown", description: "Use the default unknown fill value from Settings." },
 ];
 const BOOLEAN_STRATEGIES: CheckSelectOption<MissingValueStrategy>[] = [
   { value: "fill_mode", label: "Fill Most Frequent", description: "Use the most common boolean value." },
@@ -98,11 +98,11 @@ function getSuggestedStrategy(column: ColumnProfile): MissingValueStrategy {
   if (column.type === "text") return "fill_unknown";
   return "leave";
 }
-function getPreviewValue({ rowIndex, rows, column, strategy, customValue }: { rowIndex: number; rows: DatasetRow[]; column: ColumnProfile; strategy: MissingValueStrategy; customValue: string }) {
+function getPreviewValue({ rowIndex, rows, column, strategy, customValue, emptyValueTokens, unknownFillValue }: { rowIndex: number; rows: DatasetRow[]; column: ColumnProfile; strategy: MissingValueStrategy; customValue: string; emptyValueTokens: string; unknownFillValue: string }) {
   if (strategy === "leave") return "";
   if (strategy === "drop_rows") return "Row removed";
   if (strategy === "fill_custom") return customValue;
-  if (strategy === "fill_unknown") return "Unknown";
+  if (strategy === "fill_unknown") return unknownFillValue || "Unknown";
   if (strategy === "fill_zero") return "0";
   if (strategy === "fill_mean") return String(column.numericSummary?.mean ?? "");
   if (strategy === "fill_median") return String(column.numericSummary?.median ?? "");
@@ -112,14 +112,14 @@ function getPreviewValue({ rowIndex, rows, column, strategy, customValue }: { ro
   if (strategy === "fill_previous") {
     for (let index = rowIndex - 1; index >= 0; index -= 1) {
       const value = rows[index]?.[column.name];
-      if (!isMissingValue(value)) return String(value);
+      if (!isMissingValue(value, emptyValueTokens)) return String(value);
     }
     return "";
   }
   if (strategy === "fill_next") {
     for (let index = rowIndex + 1; index < rows.length; index += 1) {
       const value = rows[index]?.[column.name];
-      if (!isMissingValue(value)) return String(value);
+      if (!isMissingValue(value, emptyValueTokens)) return String(value);
     }
     return "";
   }
@@ -178,12 +178,12 @@ export function CleanPanel() {
   const strategyOptions = selectedColumn ? getStrategyOptions(selectedColumn.type) : BASE_STRATEGIES;
   const missingRowIndexes = useMemo(() => {
     if (!selectedColumn) return [];
-    return rows.map((row, index) => ({ row, index })).filter((item) => isMissingValue(item.row[selectedColumn.name]));
+    return rows.map((row, index) => ({ row, index })).filter((item) => isMissingValue(item.row[selectedColumn.name], settings.emptyValueTokens));
   }, [rows, selectedColumn]);
   const previewRows = useMemo(() => {
     if (!selectedColumn) return [];
-    return missingRowIndexes.slice(0, 8).map((item) => ({ rowIndex: item.index, before: String(item.row[selectedColumn.name] ?? ""), after: getPreviewValue({ rowIndex: item.index, rows, column: selectedColumn, strategy, customValue }) }));
-  }, [missingRowIndexes, rows, selectedColumn, strategy, customValue]);
+    return missingRowIndexes.slice(0, 8).map((item) => ({ rowIndex: item.index, before: String(item.row[selectedColumn.name] ?? ""), after: getPreviewValue({ rowIndex: item.index, rows, column: selectedColumn, strategy, customValue, emptyValueTokens: settings.emptyValueTokens, unknownFillValue: settings.defaultUnknownFillValue }) }));
+  }, [missingRowIndexes, rows, selectedColumn, strategy, customValue, settings.emptyValueTokens, settings.defaultUnknownFillValue]);
 
   if (!workspace) return null;
 

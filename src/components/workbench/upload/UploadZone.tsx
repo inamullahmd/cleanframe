@@ -69,7 +69,7 @@ export function UploadZone() {
   }
 
   return (
-    <section className="min-w-0 rounded-[1.35rem] border border-border bg-background p-5 shadow-sm">
+    <section className="rounded-[1.35rem] border border-border bg-background p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="!text-[13px] font-bold text-foreground">Source</h2>
@@ -129,14 +129,12 @@ export function UploadZone() {
       </label>
 
       {workspace ? (
-        <div className="mt-4 min-w-0 rounded-2xl bg-muted/[0.18] px-4 py-3">
-          <div className="flex min-w-0 items-center gap-2 !text-[13px] font-bold text-foreground">
-            <Upload className="size-4 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 truncate" title={workspace.file.name}>
-              {workspace.file.name}
-            </span>
+        <div className="mt-4 rounded-2xl bg-muted/[0.18] px-4 py-3">
+          <div className="flex items-center gap-2 !text-[13px] font-bold text-foreground">
+            <Upload className="size-4 text-muted-foreground" />
+            {workspace.file.name}
           </div>
-          <p className="mt-1 truncate !text-[13px] text-muted-foreground">
+          <p className="mt-1 !text-[13px] text-muted-foreground">
             {workspace.profile.rowCount.toLocaleString()} rows ·{" "}
             {workspace.profile.columnCount.toLocaleString()} columns
           </p>

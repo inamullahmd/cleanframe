@@ -7,6 +7,7 @@ import { Archive, Check, Download, Info } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useExportPackageStore } from "@/store/exportPackageStore";
+import { cn } from "@/lib/utils";
 import type { DatasetRow } from "@/types/dataset";
 import type {
   Aggregation,
@@ -28,14 +29,16 @@ type ChartDatum = {
   y?: number;
 };
 
+type EChartsInstanceLike = {
+  getDataURL: (options: {
+    type: "png";
+    pixelRatio: number;
+    backgroundColor: string;
+  }) => string;
+};
+
 type ReactEChartsRef = {
-  getEchartsInstance: () => {
-    getDataURL: (options: {
-      type: "png";
-      pixelRatio: number;
-      backgroundColor: string;
-    }) => string;
-  };
+  getEchartsInstance: () => EChartsInstanceLike;
 };
 
 type ChartThemeTokens = {
@@ -52,6 +55,138 @@ type ChartThemeTokens = {
 
 type CartesianLabelPosition = "top" | "inside";
 type PieLabelPosition = "center" | "inside" | "outer";
+type TitlePosition = NonNullable<ChartDisplayOptions["titlePosition"]>;
+
+function getSafeTitlePosition(
+  value: ChartDisplayOptions["titlePosition"],
+): TitlePosition {
+  if (value === "center" || value === "right") return value;
+
+  return "left";
+}
+
+function getTitleAlignmentClass(position: TitlePosition) {
+  if (position === "center") return "text-center";
+  if (position === "right") return "text-right";
+
+  return "text-left";
+}
+
+function getSafeDecimalPlaces(value: number | undefined, fallback: number) {
+  if (!Number.isFinite(value)) return fallback;
+
+  return Math.min(6, Math.max(0, Number(value)));
+}
+
+function getSafePercentDecimalPlaces(
+  value: number | undefined,
+  fallback: number,
+) {
+  if (!Number.isFinite(value)) return fallback;
+
+  return Math.min(4, Math.max(0, Number(value)));
+}
+
+function formatChartValue(value: unknown, decimalPlaces: number) {
+  const numericValue =
+    typeof value === "number" ? value : Number(String(value ?? ""));
+
+  if (!Number.isFinite(numericValue)) {
+    return String(value ?? "");
+  }
+
+  return numericValue.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimalPlaces,
+  });
+}
+
+function formatChartPercent(value: unknown, decimalPlaces: number) {
+  const numericValue =
+    typeof value === "number" ? value : Number(String(value ?? ""));
+
+  if (!Number.isFinite(numericValue)) {
+    return "";
+  }
+
+  return `${numericValue.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimalPlaces,
+  })}%`;
+}
+
+function getFormatterValue(params: unknown) {
+  const item = params as {
+    value?: unknown;
+    data?: unknown;
+  };
+
+  if (Array.isArray(item.value)) {
+    return item.value[item.value.length - 1];
+  }
+
+  return item.value;
+}
+
+function getFormatterName(params: unknown) {
+  const item = params as {
+    name?: unknown;
+  };
+
+  return String(item.name ?? "");
+}
+
+function getFormatterPercent(params: unknown) {
+  const item = params as {
+    percent?: unknown;
+  };
+
+  return item.percent;
+}
+
+function getPieLabelFormatter(displayOptions: ChartDisplayOptions) {
+  const valueDecimals = getSafeDecimalPlaces(
+    displayOptions.valueDecimalPlaces,
+    2,
+  );
+  const percentDecimals = getSafePercentDecimalPlaces(
+    displayOptions.percentDecimalPlaces,
+    1,
+  );
+
+  return (params: unknown) => {
+    const name = getFormatterName(params);
+    const value = formatChartValue(getFormatterValue(params), valueDecimals);
+    const percent = formatChartPercent(
+      getFormatterPercent(params),
+      percentDecimals,
+    );
+
+    if (displayOptions.labelMode === "name") return name;
+    if (displayOptions.labelMode === "percent") return percent;
+    if (displayOptions.labelMode === "name_percent") return `${name} ${percent}`;
+    if (displayOptions.labelMode === "name_value") return `${name}: ${value}`;
+
+    return value;
+  };
+}
+
+function getCartesianLabelFormatter(displayOptions: ChartDisplayOptions) {
+  const valueDecimals = getSafeDecimalPlaces(
+    displayOptions.valueDecimalPlaces,
+    2,
+  );
+
+  return (params: unknown) => {
+    const name = getFormatterName(params);
+    const value = formatChartValue(getFormatterValue(params), valueDecimals);
+
+    if (displayOptions.labelMode === "name") return name;
+    if (displayOptions.labelMode === "name_value") return `${name}: ${value}`;
+
+    return value;
+  };
+}
 
 function hslVar(name: string, fallback: string) {
   if (typeof window === "undefined") return fallback;
@@ -129,14 +264,28 @@ function useChartThemeTokens() {
   return tokens;
 }
 
+function getStableSeriesName(config: ChartConfig) {
+  if (config.chartType === "histogram") {
+    return `Distribution of ${config.yColumn || "value"}`;
+  }
+
+  if (config.chartType === "scatter") {
+    return `${config.yColumn || "Y"} vs ${config.xColumn || "X"}`;
+  }
+
+  if (config.aggregation === "count") {
+    return `Count by ${config.xColumn || "group"}`;
+  }
+
+  return `${config.aggregation} of ${config.yColumn || "value"}`;
+}
+
 function getChartImageDataUrl({
   chart,
   backgroundColor,
   pixelRatio = 2,
 }: {
-  chart: ReactEChartsRef["getEchartsInstance"] extends () => infer T
-    ? T
-    : never;
+  chart: EChartsInstanceLike;
   backgroundColor: string;
   pixelRatio?: number;
 }) {
@@ -145,6 +294,157 @@ function getChartImageDataUrl({
     pixelRatio,
     backgroundColor,
   });
+}
+
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Unable to load chart image."));
+    image.src = src;
+  });
+}
+
+function trimCanvasText({
+  context,
+  text,
+  maxWidth,
+}: {
+  context: CanvasRenderingContext2D;
+  text: string;
+  maxWidth: number;
+}) {
+  if (context.measureText(text).width <= maxWidth) return text;
+
+  let trimmed = text;
+
+  while (
+    trimmed.length > 0 &&
+    context.measureText(`${trimmed}…`).width > maxWidth
+  ) {
+    trimmed = trimmed.slice(0, -1);
+  }
+
+  return `${trimmed}…`;
+}
+
+function wrapCanvasText({
+  context,
+  text,
+  maxWidth,
+  maxLines,
+}: {
+  context: CanvasRenderingContext2D;
+  text: string;
+  maxWidth: number;
+  maxLines: number;
+}) {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let currentLine = "";
+
+  for (const word of words) {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word;
+
+    if (context.measureText(nextLine).width <= maxWidth) {
+      currentLine = nextLine;
+      continue;
+    }
+
+    if (currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      lines.push(trimCanvasText({ context, text: word, maxWidth }));
+      currentLine = "";
+    }
+
+    if (lines.length === maxLines) break;
+  }
+
+  if (currentLine && lines.length < maxLines) {
+    lines.push(currentLine);
+  }
+
+  const originalText = words.join(" ");
+  const joinedLines = lines.join(" ");
+
+  if (lines.length === maxLines && joinedLines.length < originalText.length) {
+    const lastIndex = lines.length - 1;
+
+    lines[lastIndex] = trimCanvasText({
+      context,
+      text: `${lines[lastIndex]}…`,
+      maxWidth,
+    });
+  }
+
+  return lines.slice(0, maxLines);
+}
+
+async function composeChartImageWithTitle({
+  chartDataUrl,
+  title,
+  titlePosition,
+  chartTheme,
+}: {
+  chartDataUrl: string;
+  title: string;
+  titlePosition: TitlePosition;
+  chartTheme: ChartThemeTokens;
+}) {
+  const chartImage = await loadImage(chartDataUrl);
+  const chartWidth = chartImage.naturalWidth || chartImage.width;
+  const chartHeight = chartImage.naturalHeight || chartImage.height;
+
+  const cleanTitle = title.trim();
+  const headerHeight = cleanTitle ? 112 : 0;
+
+  const canvas = document.createElement("canvas");
+
+  canvas.width = chartWidth;
+  canvas.height = chartHeight + headerHeight;
+
+  const context = canvas.getContext("2d");
+
+  if (!context) return chartDataUrl;
+
+  context.fillStyle = chartTheme.background;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (headerHeight > 0) {
+    const horizontalPadding = 44;
+    const maxTextWidth = chartWidth - horizontalPadding * 2;
+    const x =
+      titlePosition === "center"
+        ? chartWidth / 2
+        : titlePosition === "right"
+          ? chartWidth - horizontalPadding
+          : horizontalPadding;
+
+    context.fillStyle = chartTheme.foreground;
+    context.font = "700 30px Inter, ui-sans-serif, system-ui, sans-serif";
+    context.textBaseline = "top";
+    context.textAlign = titlePosition;
+
+    const titleLines = wrapCanvasText({
+      context,
+      text: cleanTitle,
+      maxWidth: maxTextWidth,
+      maxLines: 2,
+    });
+
+    const startY = titleLines.length > 1 ? 24 : 40;
+
+    titleLines.forEach((line, index) => {
+      context.fillText(line, x, startY + index * 34);
+    });
+  }
+
+  context.drawImage(chartImage, 0, headerHeight);
+
+  return canvas.toDataURL("image/png", 1);
 }
 
 function parseNumber(value: unknown): number | null {
@@ -324,25 +624,6 @@ function getCompatibilityMessage({
   return "";
 }
 
-function formatNumber(value: number) {
-  return value.toLocaleString(undefined, {
-    maximumFractionDigits: 2,
-  });
-}
-
-function getLabelFormatter(displayOptions: ChartDisplayOptions): string {
-  if (displayOptions.labelMode === "name") return "{b}";
-  if (displayOptions.labelMode === "percent") return "{d}%";
-  if (displayOptions.labelMode === "name_percent") return "{b} {d}%";
-
-  return "{c}";
-}
-
-function getCartesianLabelFormatter(displayOptions: ChartDisplayOptions): string {
-  if (displayOptions.labelMode === "name") return "{b}";
-  return "{c}";
-}
-
 function getLegendConfig(
   displayOptions: ChartDisplayOptions,
   chartTheme: ChartThemeTokens,
@@ -463,6 +744,15 @@ function getTooltipConfig({
 }): EChartsOption["tooltip"] {
   if (!displayOptions.showTooltip) return undefined;
 
+  const valueDecimals = getSafeDecimalPlaces(
+    displayOptions.valueDecimalPlaces,
+    2,
+  );
+  const percentDecimals = getSafePercentDecimalPlaces(
+    displayOptions.percentDecimalPlaces,
+    1,
+  );
+
   if (config.chartType === "pie") {
     return {
       trigger: "item",
@@ -477,7 +767,19 @@ function getTooltipConfig({
       },
       extraCssText:
         "border-radius: 12px; box-shadow: 0 12px 28px rgba(0,0,0,0.22);",
-      formatter: "{b}<br />{c} ({d}%)",
+      formatter: (params: unknown) => {
+        const name = getFormatterName(params);
+        const value = formatChartValue(
+          getFormatterValue(params),
+          valueDecimals,
+        );
+        const percent = formatChartPercent(
+          getFormatterPercent(params),
+          percentDecimals,
+        );
+
+        return `${name}<br />${value}${percent ? ` (${percent})` : ""}`;
+      },
     };
   }
 
@@ -506,7 +808,7 @@ function getTooltipConfig({
     },
     extraCssText:
       "border-radius: 12px; box-shadow: 0 12px 28px rgba(0,0,0,0.22);",
-    valueFormatter: (value) => formatNumber(Number(value)),
+    valueFormatter: (value) => formatChartValue(value, valueDecimals),
   };
 }
 
@@ -526,7 +828,14 @@ function getValueAxisStyle(
   chartTheme: ChartThemeTokens,
 ) {
   return {
-    axisLabel: getAxisLabelStyle(displayOptions, chartTheme),
+    axisLabel: {
+      ...getAxisLabelStyle(displayOptions, chartTheme),
+      formatter: (value: unknown) =>
+        formatChartValue(
+          value,
+          getSafeDecimalPlaces(displayOptions.valueDecimalPlaces, 2),
+        ),
+    },
     axisLine: {
       lineStyle: {
         color: chartTheme.border,
@@ -558,7 +867,7 @@ function getCartesianSeriesLabelStyle({
 }: {
   displayOptions: ChartDisplayOptions;
   chartTheme: ChartThemeTokens;
-  formatter: string;
+  formatter: (params: unknown) => string;
   position?: CartesianLabelPosition;
 }) {
   return {
@@ -582,7 +891,7 @@ function getPieSeriesLabelStyle({
 }: {
   displayOptions: ChartDisplayOptions;
   chartTheme: ChartThemeTokens;
-  formatter: string;
+  formatter: (params: unknown) => string;
   position: PieLabelPosition;
 }) {
   return {
@@ -639,7 +948,7 @@ function buildChartOption({
 }): EChartsOption {
   const displayOptions = config.displayOptions;
   const legend = getLegendConfig(displayOptions, chartTheme);
-  const labelFormatter = getLabelFormatter(displayOptions);
+  const pieLabelFormatter = getPieLabelFormatter(displayOptions);
   const cartesianLabelFormatter = getCartesianLabelFormatter(displayOptions);
 
   const baseOption: EChartsOption = {
@@ -693,12 +1002,11 @@ function buildChartOption({
             ...getPieSeriesLabelStyle({
               displayOptions,
               chartTheme,
-              formatter:
-                displayOptions.labelMode === "value" ? "{c}" : labelFormatter,
+              formatter: pieLabelFormatter,
               position: labelPosition,
             }),
             overflow: "truncate",
-            width: 120,
+            width: 140,
           },
           labelLine: {
             show:
@@ -739,6 +1047,11 @@ function buildChartOption({
         axisLabel: {
           ...getAxisLabelStyle(displayOptions, chartTheme),
           rotate: displayOptions.axisLabelRotation,
+          formatter: (value: unknown) =>
+            formatChartValue(
+              value,
+              getSafeDecimalPlaces(displayOptions.valueDecimalPlaces, 2),
+            ),
         },
       },
       yAxis: {
@@ -773,7 +1086,7 @@ function buildChartOption({
           label: getCartesianSeriesLabelStyle({
             displayOptions,
             chartTheme,
-            formatter: "{@[1]}",
+            formatter: cartesianLabelFormatter,
             position: "top",
           }),
         },
@@ -960,48 +1273,107 @@ export function ChartView({
   );
   const [savedFlash, setSavedFlash] = useState(false);
 
-  const compatibilityMessage = getCompatibilityMessage({
-    config,
-    numericColumns,
-    groupableColumns,
-  });
+  const titlePosition = getSafeTitlePosition(config.displayOptions.titlePosition);
+
+  const echartsDisplayOptions = useMemo<ChartDisplayOptions>(() => {
+    return {
+      ...config.displayOptions,
+      titlePosition: "left",
+    };
+  }, [
+    config.displayOptions.showGrid,
+    config.displayOptions.showTooltip,
+    config.displayOptions.showLegend,
+    config.displayOptions.showLabels,
+    config.displayOptions.enableAnimation,
+    config.displayOptions.showDataZoom,
+    config.displayOptions.legendPosition,
+    config.displayOptions.labelMode,
+    config.displayOptions.valueDecimalPlaces,
+    config.displayOptions.percentDecimalPlaces,
+    config.displayOptions.axisLabelRotation,
+    config.displayOptions.axisFontSize,
+    config.displayOptions.truncateAxisLabels,
+    config.displayOptions.chartPadding,
+    config.displayOptions.smoothLines,
+    config.displayOptions.lineWidth,
+    config.displayOptions.pointSize,
+    config.displayOptions.areaOpacity,
+    config.displayOptions.barWidth,
+    config.displayOptions.barRadius,
+    config.displayOptions.pieInnerRadius,
+    config.displayOptions.pieOuterRadius,
+    config.displayOptions.pieMinAngle,
+    config.displayOptions.pieRoseType,
+    config.displayOptions.pieLabelPosition,
+  ]);
+
+  const chartConfigForOption = useMemo<ChartConfig>(() => {
+    return {
+      ...config,
+      title: getStableSeriesName(config),
+      displayOptions: echartsDisplayOptions,
+    };
+  }, [
+    config.chartType,
+    config.xColumn,
+    config.yColumn,
+    config.aggregation,
+    config.topN,
+    echartsDisplayOptions,
+  ]);
+
+  const compatibilityMessage = useMemo(() => {
+    return getCompatibilityMessage({
+      config: chartConfigForOption,
+      numericColumns,
+      groupableColumns,
+    });
+  }, [chartConfigForOption, numericColumns, groupableColumns]);
 
   const chartData = useMemo(() => {
     if (compatibilityMessage) return [];
 
-    if (config.chartType === "scatter") {
-      return buildScatterData(rows, config);
+    if (chartConfigForOption.chartType === "scatter") {
+      return buildScatterData(rows, chartConfigForOption);
     }
 
-    if (config.chartType === "histogram") {
-      return buildHistogramData(rows, config);
+    if (chartConfigForOption.chartType === "histogram") {
+      return buildHistogramData(rows, chartConfigForOption);
     }
 
-    return buildGroupedData(rows, config);
-  }, [rows, config, compatibilityMessage]);
+    return buildGroupedData(rows, chartConfigForOption);
+  }, [rows, chartConfigForOption, compatibilityMessage]);
 
   const chartOption = useMemo(() => {
     return buildChartOption({
-      config,
+      config: chartConfigForOption,
       chartData,
       chartTheme,
     });
-  }, [config, chartData, chartTheme]);
+  }, [chartConfigForOption, chartData, chartTheme]);
 
-  function getCurrentChartDataUrl() {
+  async function getCurrentChartDataUrl() {
     const chart = chartInstanceRef.current?.getEchartsInstance();
 
     if (!chart || chartData.length === 0) return "";
 
-    return getChartImageDataUrl({
+    const rawChartDataUrl = getChartImageDataUrl({
       chart,
       backgroundColor: chartTheme.background,
       pixelRatio: 2,
     });
+
+    return composeChartImageWithTitle({
+      chartDataUrl: rawChartDataUrl,
+      title: config.title || "Chart",
+      titlePosition,
+      chartTheme,
+    });
   }
 
-  function downloadPng() {
-    const dataUrl = getCurrentChartDataUrl();
+  async function downloadPng() {
+    const dataUrl = await getCurrentChartDataUrl();
 
     if (!dataUrl) return;
 
@@ -1011,8 +1383,8 @@ export function ChartView({
     link.click();
   }
 
-  function saveToPackage() {
-    const dataUrl = getCurrentChartDataUrl();
+  async function saveToPackage() {
+    const dataUrl = await getCurrentChartDataUrl();
 
     if (!dataUrl) return;
 
@@ -1029,56 +1401,60 @@ export function ChartView({
     window.setTimeout(() => setSavedFlash(false), 1400);
   }
 
-  function renderChart() {
-    if (compatibilityMessage) {
-      return (
-        <ChartEmptyState
-          title="Chart setup needs attention"
-          description={compatibilityMessage}
-        />
-      );
-    }
-
-    if (chartData.length === 0) {
-      return (
-        <ChartEmptyState
-          title="No chart data available"
-          description="Try another chart type, column, aggregation, or column pool."
-        />
-      );
-    }
-
+ function renderChart() {
+  if (compatibilityMessage) {
     return (
-      <ReactECharts
-        ref={chartInstanceRef as never}
-        option={chartOption}
-        notMerge
-        lazyUpdate={false}
-        opts={{ renderer: "canvas" }}
-        style={{ width: "100%", height: "100%" }}
-        className="h-full w-full"
+      <ChartEmptyState
+        title="Chart setup needs attention"
+        description={compatibilityMessage}
+      />
+    );
+  }
+
+  if (chartData.length === 0) {
+    return (
+      <ChartEmptyState
+        title="No chart data available"
+        description="Try another chart type, column, aggregation, or column pool."
       />
     );
   }
 
   return (
+    <ReactECharts
+      ref={chartInstanceRef as never}
+      option={chartOption}
+      notMerge={false}
+      replaceMerge={[
+        "series",
+        "xAxis",
+        "yAxis",
+        "grid",
+        "dataZoom",
+        "legend",
+      ]}
+      lazyUpdate
+      opts={{ renderer: "canvas" }}
+      style={{ width: "100%", height: "100%" }}
+      className="h-full w-full"
+    />
+  );
+}
+
+  return (
     <section className="flex h-full min-h-[520px] min-w-0 flex-col overflow-hidden">
-      <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 px-1 pb-3">
-        <div className="min-w-0">
+      <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-1 pb-3">
+        <div className={cn("min-w-0", getTitleAlignmentClass(titlePosition))}>
           <h3 className="truncate !text-[13px] font-bold leading-5 text-foreground">
             {config.title || "Chart"}
           </h3>
-          <p className="mt-0.5 !text-[13px] leading-5 text-muted-foreground">
-            {config.chartType} · {chartData.length.toLocaleString()} plotted
-            items
-          </p>
         </div>
 
         <div className="flex items-center gap-2">
           <Button
             type="button"
             variant="outline"
-            onClick={saveToPackage}
+            onClick={() => void saveToPackage()}
             disabled={Boolean(compatibilityMessage) || chartData.length === 0}
             className="h-8 rounded-xl px-3 !text-[13px]"
           >
@@ -1093,7 +1469,7 @@ export function ChartView({
           <Button
             type="button"
             variant="outline"
-            onClick={downloadPng}
+            onClick={() => void downloadPng()}
             disabled={Boolean(compatibilityMessage) || chartData.length === 0}
             className="h-8 rounded-xl px-3 !text-[13px]"
           >

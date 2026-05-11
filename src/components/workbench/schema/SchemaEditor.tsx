@@ -1217,17 +1217,6 @@ function SchemaColumnCard({
         <div className="space-y-2.5 p-3">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
-              <div className="mb-1.5 flex items-center gap-2">
-                <span
-                  className={`size-2 rounded-full ${
-                    hasIssue ? "bg-amber-500" : "bg-emerald-500"
-                  }`}
-                />
-                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                  {hasIssue ? "Review" : "Clean"}
-                </span>
-              </div>
-
               <RenameInput column={column} columnNames={columnNames} />
             </div>
 
@@ -1235,7 +1224,7 @@ function SchemaColumnCard({
               type="button"
               disabled={!canDelete}
               onClick={() => setDeleteDialogOpen(true)}
-              className="mt-5 inline-flex size-8 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-background text-muted-foreground shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:border-rose-900/50 dark:hover:bg-rose-950/30 dark:hover:text-rose-300"
+              className="inline-flex size-8 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-background text-muted-foreground shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:border-rose-900/50 dark:hover:bg-rose-950/30 dark:hover:text-rose-300"
               aria-label={`Delete ${column.name}`}
               title={
                 canDelete ? "Delete column" : "At least one column is required"

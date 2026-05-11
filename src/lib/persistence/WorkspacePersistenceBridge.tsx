@@ -3,16 +3,14 @@
 import { useEffect, useRef } from "react";
 
 import { useCleanframeSettings } from "@/hooks/useCleanframeSettings";
-import { useWorkspaceStore } from "@/store/workspaceStore";
 import {
   clearPersistedWorkspaceSession,
   loadPersistedWorkspaceSession,
   savePersistedWorkspaceSession,
 } from "@/lib/persistence/workspaceSession";
+import { useWorkspaceStore } from "@/store/workspaceStore";
 
-const SAVE_DEBOUNCE_MS = 450;
-
-export { clearPersistedWorkspaceSession, loadPersistedWorkspaceSession };
+const SAVE_DEBOUNCE_MS = 700;
 
 export function WorkspacePersistenceBridge() {
   const { settings, hydrated } = useCleanframeSettings();
@@ -22,26 +20,34 @@ export function WorkspacePersistenceBridge() {
   const csvEncoding = useWorkspaceStore((state) => state.csvEncoding);
   const activePanel = useWorkspaceStore((state) => state.activePanel);
 
-  const hasLoadedPersistedSession = useRef(false);
+  const hasHydratedPersistedSession = useRef(false);
   const saveTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!hydrated || hasLoadedPersistedSession.current) return;
+    if (!hydrated || hasHydratedPersistedSession.current) return;
 
-    hasLoadedPersistedSession.current = true;
+    hasHydratedPersistedSession.current = true;
 
     if (!settings.persistWorkspaceLocally) return;
 
     let cancelled = false;
 
-    async function loadSession() {
+    async function hydratePersistedWorkspace() {
       const persistedSession = await loadPersistedWorkspaceSession();
 
       if (cancelled || !persistedSession) return;
 
+      const restoredOutlierConfig = {
+        ...outlierConfig,
+        ...(persistedSession.outlierConfig ?? {}),
+        method: (
+          persistedSession.outlierConfig?.method ?? outlierConfig.method
+        ) as typeof outlierConfig.method,
+      } as typeof outlierConfig;
+
       useWorkspaceStore.setState({
         workspace: persistedSession.workspace,
-        outlierConfig: persistedSession.outlierConfig,
+        outlierConfig: restoredOutlierConfig,
         csvEncoding: persistedSession.csvEncoding,
         activePanel: persistedSession.activePanel,
         status: "ready",
@@ -49,12 +55,12 @@ export function WorkspacePersistenceBridge() {
       });
     }
 
-    void loadSession();
+    void hydratePersistedWorkspace();
 
     return () => {
       cancelled = true;
     };
-  }, [hydrated, settings.persistWorkspaceLocally]);
+  }, [hydrated, settings.persistWorkspaceLocally, outlierConfig]);
 
   useEffect(() => {
     if (!hydrated) return;

@@ -1,5 +1,5 @@
 import type { WorkspacePanel } from "@/store/workspaceStore";
-import type { CsvEncoding, OutlierConfig } from "@/types/settings";
+import type { CsvEncoding } from "@/types/settings";
 import type { DatasetWorkspace } from "@/types/workspace";
 
 const DATABASE_NAME = "cleanframe-workspace";
@@ -7,14 +7,32 @@ const DATABASE_VERSION = 1;
 const STORE_NAME = "sessions";
 const SESSION_KEY = "current-workspace";
 
+export const PERSISTED_WORKSPACE_CHANGE_EVENT =
+  "cleanframe-workspace-session-change";
+
+export const PERSISTED_WORKSPACE_CLEAR_EVENT =
+  "cleanframe-workspace-session-clear";
+
+type PersistedOutlierConfig = {
+  method: string;
+  iqrMultiplier?: number;
+  zScoreThreshold?: number;
+};
+
 export type PersistedWorkspaceSession = {
   version: number;
   savedAt: string;
   workspace: DatasetWorkspace;
-  outlierConfig: OutlierConfig;
+  outlierConfig: PersistedOutlierConfig;
   csvEncoding: CsvEncoding;
   activePanel: WorkspacePanel;
 };
+
+function dispatchPersistenceEvent(eventName: string) {
+  if (typeof window === "undefined") return;
+
+  window.dispatchEvent(new CustomEvent(eventName));
+}
 
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
@@ -48,7 +66,10 @@ async function withStore<T>(
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);
 
-    transaction.oncomplete = () => database.close();
+    transaction.oncomplete = () => {
+      database.close();
+    };
+
     transaction.onerror = () => {
       database.close();
       reject(transaction.error);
@@ -62,6 +83,7 @@ export async function savePersistedWorkspaceSession(
   if (typeof indexedDB === "undefined") return;
 
   await withStore("readwrite", (store) => store.put(session, SESSION_KEY));
+  dispatchPersistenceEvent(PERSISTED_WORKSPACE_CHANGE_EVENT);
 }
 
 export async function loadPersistedWorkspaceSession() {
@@ -84,6 +106,7 @@ export async function clearPersistedWorkspaceSession() {
 
   try {
     await withStore("readwrite", (store) => store.delete(SESSION_KEY));
+    dispatchPersistenceEvent(PERSISTED_WORKSPACE_CLEAR_EVENT);
   } catch {
     // Ignore storage cleanup failures.
   }

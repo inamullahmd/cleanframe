@@ -37,9 +37,17 @@ export function WorkspacePersistenceBridge() {
 
       if (cancelled || !persistedSession) return;
 
+      const restoredOutlierConfig = {
+        ...outlierConfig,
+        ...(persistedSession.outlierConfig ?? {}),
+        method: (
+          persistedSession.outlierConfig?.method ?? outlierConfig.method
+        ) as typeof outlierConfig.method,
+      } as typeof outlierConfig;
+
       useWorkspaceStore.setState({
         workspace: persistedSession.workspace,
-        outlierConfig: persistedSession.outlierConfig,
+        outlierConfig: restoredOutlierConfig,
         csvEncoding: persistedSession.csvEncoding,
         activePanel: persistedSession.activePanel,
         status: "ready",
@@ -52,7 +60,7 @@ export function WorkspacePersistenceBridge() {
     return () => {
       cancelled = true;
     };
-  }, [hydrated, settings.persistWorkspaceLocally]);
+  }, [hydrated, settings.persistWorkspaceLocally, outlierConfig]);
 
   useEffect(() => {
     if (!hydrated) return;

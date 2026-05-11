@@ -11,7 +11,6 @@ import {
   Settings,
 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { UploadZone } from "@/components/workbench/upload/UploadZone";
 import { cn } from "@/lib/utils";
@@ -112,22 +111,13 @@ export function WorkbenchSidebar({
     >
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
         <div className="mb-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h2 className="!text-[13px] font-bold text-foreground">
-                Workspace
-              </h2>
-              <p className="mt-1 !text-[13px] leading-5 text-muted-foreground">
-                Process CSV files temporarily in this browser session.
-              </p>
-            </div>
-
-            <Badge
-              variant="secondary"
-              className="shrink-0 rounded-lg !text-[11px]"
-            >
-              Local
-            </Badge>
+          <div className="min-w-0">
+            <h2 className="!text-[13px] font-bold text-foreground">
+              Workspace
+            </h2>
+            <p className="mt-1 !text-[13px] leading-5 text-muted-foreground">
+              Process CSV files in a browser-first workspace.
+            </p>
           </div>
         </div>
 
@@ -152,7 +142,7 @@ export function WorkbenchSidebar({
             const isEnabled = Boolean(workspace);
             const isActive = isWorkspacePanel(step.id)
               ? step.id === activePanel
-              : String(activePanel) === "export";
+              : activePanel === "export";
 
             return (
               <button
@@ -165,7 +155,7 @@ export function WorkbenchSidebar({
                     return;
                   }
 
-                  goToPanel("export" as WorkspacePanel);
+                  goToPanel("export");
                 }}
                 className={cn(
                   "group flex h-auto w-full items-center justify-start gap-3 rounded-2xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-45",

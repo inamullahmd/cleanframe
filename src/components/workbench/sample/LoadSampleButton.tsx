@@ -2,8 +2,8 @@
 
 import type { ComponentProps } from "react";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { DatabaseZap, Loader2 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { createSampleWorkspace } from "@/lib/sample/createSampleWorkspace";
 import { useWorkspaceStore } from "@/store/workspaceStore";
@@ -16,12 +16,11 @@ export function LoadSampleButton({
   label = "Load sample data",
   ...props
 }: LoadSampleButtonProps) {
-  const router = useRouter();
-
   const [isLoading, setIsLoading] = useState(false);
   const [localError, setLocalError] = useState("");
 
   const setWorkspace = useWorkspaceStore((state) => state.setWorkspace);
+  const setActivePanel = useWorkspaceStore((state) => state.setActivePanel);
   const setError = useWorkspaceStore((state) => state.setError);
   const outlierConfig = useWorkspaceStore((state) => state.outlierConfig);
 
@@ -33,7 +32,7 @@ export function LoadSampleButton({
       const workspace = await createSampleWorkspace(outlierConfig);
 
       setWorkspace(workspace);
-      router.push("/workbench");
+      setActivePanel("schema");
     } catch (error) {
       const message =
         error instanceof Error
@@ -48,27 +47,28 @@ export function LoadSampleButton({
   }
 
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className="inline-flex flex-col items-start gap-2">
       <Button
         type="button"
         onClick={loadSampleData}
-        disabled={isLoading || props.disabled}
+        disabled={isLoading}
+        className="h-9 rounded-xl px-3 !text-[13px] font-semibold"
         {...props}
       >
         {isLoading ? (
-          <Loader2 className="mr-2 size-4 animate-spin" />
+          <Loader2 className="mr-1.5 size-3.5 animate-spin" />
         ) : (
-          <DatabaseZap className="mr-2 size-4" />
+          <DatabaseZap className="mr-1.5 size-3.5" />
         )}
 
         {isLoading ? "Loading sample..." : label}
       </Button>
 
-      {localError && (
-        <p className="max-w-md text-center text-xs leading-5 text-destructive">
+      {localError ? (
+        <p className="max-w-xs !text-[12px] leading-4 text-rose-500">
           {localError}
         </p>
-      )}
+      ) : null}
     </div>
   );
 }

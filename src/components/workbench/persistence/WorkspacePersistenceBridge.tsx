@@ -21,9 +21,7 @@ export function WorkspacePersistenceBridge() {
   const activePanel = useWorkspaceStore((state) => state.activePanel);
 
   const hasHydratedPersistedSession = useRef(false);
-  const saveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(
-    null,
-  );
+  const saveTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!hydrated || hasHydratedPersistedSession.current) return;
@@ -59,7 +57,7 @@ export function WorkspacePersistenceBridge() {
   useEffect(() => {
     if (!hydrated) return;
 
-    if (saveTimerRef.current) {
+    if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
@@ -83,7 +81,7 @@ export function WorkspacePersistenceBridge() {
     }, SAVE_DEBOUNCE_MS);
 
     return () => {
-      if (saveTimerRef.current) {
+      if (saveTimerRef.current !== null) {
         window.clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }

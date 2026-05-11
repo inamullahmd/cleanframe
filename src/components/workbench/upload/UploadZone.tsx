@@ -23,6 +23,7 @@ function validateCsvFile(file: File): string | null {
 export function UploadZone() {
   const { settings } = useCleanframeSettings();
   const csvEncoding = useWorkspaceStore((state) => state.csvEncoding);
+
   const {
     workspace,
     status,
@@ -31,6 +32,7 @@ export function UploadZone() {
     setLoading,
     setError,
     resetWorkspace,
+    setActivePanel,
   } = useWorkspaceStore();
 
   const isLoading = status === "loading";
@@ -47,6 +49,7 @@ export function UploadZone() {
 
     try {
       const formData = new FormData();
+
       formData.append("file", file);
       formData.append("encoding", csvEncoding);
       formData.append("settings", JSON.stringify(settings));
@@ -63,17 +66,18 @@ export function UploadZone() {
       }
 
       setWorkspace(data.workspace);
+      setActivePanel("schema");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
     }
   }
 
   return (
-    <section className="rounded-[1.35rem] border border-border bg-background p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="!text-[13px] font-bold text-foreground">Source</h2>
-          <p className="mt-1 !text-[13px] text-muted-foreground">
+    <section className="min-w-0 overflow-hidden rounded-2xl border border-border bg-background p-4">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="!text-[13px] font-bold text-foreground">Source</h3>
+          <p className="mt-1 !text-[13px] leading-5 text-muted-foreground">
             Upload a CSV file.
           </p>
         </div>
@@ -83,7 +87,7 @@ export function UploadZone() {
             type="button"
             variant="outline"
             onClick={resetWorkspace}
-            className="h-8 rounded-xl px-3 !text-[13px]"
+            className="h-8 shrink-0 rounded-xl px-3 !text-[13px]"
           >
             <RotateCcw className="mr-1.5 size-3.5" />
             Reset
@@ -95,12 +99,14 @@ export function UploadZone() {
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {
           event.preventDefault();
+
           const file = event.dataTransfer.files[0];
-          if (file) profileFile(file);
+
+          if (file) void profileFile(file);
         }}
-        className="mt-4 flex min-h-[220px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/[0.18] px-6 py-8 text-center transition hover:bg-muted/35"
+        className="mt-4 flex min-h-[220px] w-full min-w-0 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/[0.18] px-4 py-8 text-center transition hover:bg-muted/35"
       >
-        <span className="flex size-12 items-center justify-center rounded-2xl bg-background text-muted-foreground shadow-sm">
+        <span className="inline-flex size-11 items-center justify-center rounded-2xl bg-background text-muted-foreground shadow-sm">
           {isLoading ? (
             <Loader2 className="size-5 animate-spin" />
           ) : (
@@ -111,7 +117,8 @@ export function UploadZone() {
         <span className="mt-4 !text-[13px] font-bold text-foreground">
           {isLoading ? "Profiling file..." : "Drop CSV or browse"}
         </span>
-        <span className="mt-1 !text-[13px] text-muted-foreground">
+
+        <span className="mt-1 !text-[13px] leading-5 text-muted-foreground">
           Max size: 10MB · Encoding: {csvEncoding}
         </span>
 
@@ -122,29 +129,42 @@ export function UploadZone() {
           disabled={isLoading}
           onChange={(event) => {
             const file = event.target.files?.[0];
-            if (file) profileFile(file);
+
+            if (file) void profileFile(file);
+
             event.currentTarget.value = "";
           }}
         />
       </label>
 
       {workspace ? (
-        <div className="mt-4 rounded-2xl bg-muted/[0.18] px-4 py-3">
-          <div className="flex items-center gap-2 !text-[13px] font-bold text-foreground">
-            <Upload className="size-4 text-muted-foreground" />
-            {workspace.file.name}
+        <div className="mt-3 w-full min-w-0 overflow-hidden rounded-2xl bg-muted/[0.18] px-4 py-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-xl bg-background text-muted-foreground">
+              <Upload className="size-4" />
+            </span>
+
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <p
+                className="block max-w-full truncate !text-[13px] font-bold text-foreground"
+                title={workspace.file.name}
+              >
+                {workspace.file.name}
+              </p>
+
+              <p className="mt-0.5 truncate !text-[13px] text-muted-foreground">
+                {workspace.profile.rowCount.toLocaleString()} rows ·{" "}
+                {workspace.profile.columnCount.toLocaleString()} columns
+              </p>
+            </div>
           </div>
-          <p className="mt-1 !text-[13px] text-muted-foreground">
-            {workspace.profile.rowCount.toLocaleString()} rows ·{" "}
-            {workspace.profile.columnCount.toLocaleString()} columns
-          </p>
         </div>
       ) : null}
 
       {error ? (
-        <div className="mt-4 rounded-2xl bg-destructive/10 px-4 py-3 !text-[13px] font-semibold text-destructive">
+        <p className="mt-3 rounded-2xl bg-rose-500/10 px-3 py-2 !text-[13px] leading-5 text-rose-500">
           {error}
-        </div>
+        </p>
       ) : null}
     </section>
   );
